@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# carbide-rest-api configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carbide-rest-api-config
+  labels:
+    app: carbide-rest-api
+data:
+  config.yaml: |
+    env:
+      dev: true
+      disconnected: true
+
+    api:
+      name: carbide
+      route:
+        version: v2
+
+    log:
+      level: debug
+      sentry:
+        dsn: ""
+
+    db:
+      host: postgres
+      port: 5432
+      name: forge
+      user: forge
+      password: forge
+
+    temporal:
+      host: temporal
+      port: 7233
+      serverName: temporal
+      namespace: cloud
+      queue: cloud
+      tls:
+        enabled: false
+      encryptionKeyPath: /var/secrets/temporal/encryption-key
+
+    auth:
+      - name: keycloak
+        origin: 2
+        url: http://keycloak:8080/realms/carbide-dev/protocol/openid-connect/certs
+        issuer: "http://localhost:8080/realms/carbide-dev"
+        serviceAccount: true
+
+    siteManager:
+      enabled: true
+      svcEndpoint: "https://carbide-rest-site-manager:8100/v1/site"
+
+    metrics:
+      enabled: true
+      port: 9360
+
+    tracing:
+      enabled: false
+      serviceName: cloud-api
+
+    keycloak:
+      enabled: true
+      baseURL: http://keycloak:8080
+      externalBaseURL: http://localhost:8080
+      realm: carbide-dev
+      clientID: carbide-api
+      clientSecretPath: /var/secrets/keycloak/client-secret
+      serviceAccount: true
+
+    rateLimiter:
+      enabled: false
+      rate: 10.0
+      burst: 30
+      expiresIn: 180
+

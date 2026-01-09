@@ -1,0 +1,463 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
+	"go.temporal.io/sdk/client"
+	tClient "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/temporal"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cclient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+)
+
+// ManageExpectedMachineInventory is an activity wrapper for Expected Machine inventory collection and publishing
+type ManageExpectedMachineInventory struct {
+	siteID                uuid.UUID
+	carbideAtomicClient   *cclient.CarbideAtomicClient
+	temporalPublishClient tClient.Client
+	temporalPublishQueue  string
+	cloudPageSize         int
+}
+
+type linkedExpectedMachineInfo struct {
+	expectedMachine       *cwssaws.ExpectedMachine
+	linkedExpectedMachine *cwssaws.LinkedExpectedMachine
+}
+
+// DiscoverExpectedMachineInventory is an activity to collect Expected Machine inventory and publish to Temporal queue
+func (memi *ManageExpectedMachineInventory) DiscoverExpectedMachineInventory(ctx context.Context) error {
+	logger := log.With().Str("Activity", "DiscoverExpectedMachineInventory").Logger()
+	logger.Info().Msg("Starting activity")
+
+	// Define workflow options
+	workflowOptions := tClient.StartWorkflowOptions{
+		ID:        "update-expectedmachine-inventory-" + memi.siteID.String(),
+		TaskQueue: memi.temporalPublishQueue,
+	}
+
+	// Get Site Controller gRPC client
+	carbideClient := memi.carbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	// Call GetAllExpectedMachines to get full list of ExpectedMachines on Site
+	emList, err := forgeClient.GetAllExpectedMachines(ctx, &emptypb.Empty{})
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to retrieve ExpectedMachines using Site Controller API")
+
+		// Error encountered before we've published anything, report inventory collection error to Cloud
+		inventory := &cwssaws.ExpectedMachineInventory{
+			Timestamp: &timestamppb.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+			InventoryStatus: cwssaws.InventoryStatus_INVENTORY_STATUS_FAILED,
+			StatusMsg:       err.Error(),
+		}
+
+		_, serr := memi.temporalPublishClient.ExecuteWorkflow(context.Background(), workflowOptions, "UpdateExpectedMachineInventory", memi.siteID, inventory)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("Failed to publish ExpectedMachine inventory error to Cloud")
+			return serr
+		}
+		return err
+	}
+
+	// Call GetAllExpectedMachinesLinked to get linked Machine IDs
+	linkedList, lerr := forgeClient.GetAllExpectedMachinesLinked(ctx, &emptypb.Empty{})
+	if lerr != nil {
+		logger.Warn().Err(lerr).Msg("Failed to retrieve linked Machine IDs using Site Controller API")
+
+		// Fatal error - report inventory collection error to Cloud
+		inventory := &cwssaws.ExpectedMachineInventory{
+			Timestamp: &timestamppb.Timestamp{
+				Seconds: time.Now().Unix(),
+			},
+			InventoryStatus: cwssaws.InventoryStatus_INVENTORY_STATUS_FAILED,
+			StatusMsg:       lerr.Error(),
+		}
+
+		_, serr := memi.temporalPublishClient.ExecuteWorkflow(context.Background(), workflowOptions, "UpdateExpectedMachineInventory", memi.siteID, inventory)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("Failed to publish ExpectedMachine inventory error to Cloud")
+			return serr
+		}
+		return lerr
+	}
+
+	// LinkedExpectedMachine data is missing ExpectedMachine ID so we build an intermediate map using MAC address
+	linkedMachinesByKey := make(map[string]*cwssaws.LinkedExpectedMachine)
+	for _, linked := range linkedList.ExpectedMachines {
+		linkedMachinesByKey[linked.BmcMacAddress] = linked
+	}
+
+	// Build list of ExpectedMachine paired with LinkedExpectedMachine
+	linkedExpectedMachinesInfo := []linkedExpectedMachineInfo{}
+	allExpectedMachineIDs := []string{}
+	for _, em := range emList.ExpectedMachines {
+		// Discard records without ID
+		if em.Id == nil || em.Id.Value == "" {
+			logger.Warn().Str("MAC", em.BmcMacAddress).Str("Serial", em.ChassisSerialNumber).Msg("Discarding ExpectedMachine without ID")
+			continue
+		}
+		allExpectedMachineIDs = append(allExpectedMachineIDs, em.Id.Value)
+		// Find matching LinkedMachine record by MAC address if it exists
+		linked := linkedMachinesByKey[em.BmcMacAddress]
+		linkedExpectedMachinesInfo = append(linkedExpectedMachinesInfo, linkedExpectedMachineInfo{
+			expectedMachine:       em,
+			linkedExpectedMachine: linked,
+		})
+	}
+	totalCount := len(linkedExpectedMachinesInfo)
+
+	logger.Info().Int("ExpectedMachine Count", totalCount).Msg("Built ExpectedMachine list")
+
+	if totalCount == 0 {
+		inventoryPage := getPagedExpectedMachineInventory([]linkedExpectedMachineInfo{}, allExpectedMachineIDs, totalCount, 1, memi.cloudPageSize, cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS, "No ExpectedMachines reported by Site Controller")
+
+		_, serr := memi.temporalPublishClient.ExecuteWorkflow(context.Background(), workflowOptions, "UpdateExpectedMachineInventory", memi.siteID, inventoryPage)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("Failed to publish ExpectedMachine inventory to Cloud")
+			return serr
+		}
+		return nil
+	}
+
+	// Calculate total pages needed for Cloud
+	totalCloudPages := totalCount / memi.cloudPageSize
+	if totalCount%memi.cloudPageSize > 0 {
+		totalCloudPages++
+	}
+
+	// Publish ExpectedMachine inventory to Cloud in separate chunks
+	for cloudPage := 1; cloudPage <= totalCloudPages; cloudPage++ {
+		startIndex := (cloudPage - 1) * memi.cloudPageSize
+		endIndex := startIndex + memi.cloudPageSize
+		if endIndex > totalCount {
+			endIndex = totalCount
+		}
+
+		pagedWorkflowOptions := client.StartWorkflowOptions{
+			ID:        fmt.Sprintf("%v-%v", workflowOptions.ID, cloudPage),
+			TaskQueue: workflowOptions.TaskQueue,
+		}
+
+		// Create an inventory page with the subset of ExpectedMachines
+		// Slice the list directly for this page
+		pagedInfo := linkedExpectedMachinesInfo[startIndex:endIndex]
+		inventoryPage := getPagedExpectedMachineInventory(
+			pagedInfo,
+			allExpectedMachineIDs,
+			totalCount,
+			cloudPage,
+			memi.cloudPageSize,
+			cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS,
+			"Successfully retrieved ExpectedMachines from Site Controller",
+		)
+
+		logger.Info().Msgf("Publishing ExpectedMachine inventory page %d to Cloud", cloudPage)
+
+		_, serr := memi.temporalPublishClient.ExecuteWorkflow(context.Background(), pagedWorkflowOptions, "UpdateExpectedMachineInventory", memi.siteID, inventoryPage)
+		if serr != nil {
+			logger.Error().Err(serr).Int("Cloud Page", cloudPage).Msg("Failed to publish ExpectedMachine inventory to Cloud")
+			return serr
+		}
+	}
+
+	return nil
+}
+
+// getPagedExpectedMachineInventory returns a subset of ExpectedMachineInventory for a given page
+func getPagedExpectedMachineInventory(
+	pagedInfo []linkedExpectedMachineInfo,
+	allExpectedMachineIDs []string,
+	totalCount int,
+	page int,
+	pageSize int,
+	status cwssaws.InventoryStatus,
+	statusMessage string,
+) *cwssaws.ExpectedMachineInventory {
+	totalPages := totalCount / pageSize
+	if totalCount%pageSize > 0 {
+		totalPages++
+	}
+
+	// Build lists for this page from the sliced info list
+	pagedExpectedMachines := make([]*cwssaws.ExpectedMachine, 0, len(pagedInfo))
+	pagedLinkedMachines := make([]*cwssaws.LinkedExpectedMachine, 0, len(pagedInfo))
+
+	for _, info := range pagedInfo {
+		pagedExpectedMachines = append(pagedExpectedMachines, info.expectedMachine)
+		// Only add LinkedExpectedMachine if it exists (it may be nil if no match was found)
+		if info.linkedExpectedMachine != nil {
+			pagedLinkedMachines = append(pagedLinkedMachines, info.linkedExpectedMachine)
+		}
+	}
+
+	// Create an inventory page with the subset of ExpectedMachines and matching LinkedMachines
+	inventoryPage := &cwssaws.ExpectedMachineInventory{
+		ExpectedMachines: pagedExpectedMachines,
+		LinkedMachines:   pagedLinkedMachines,
+		Timestamp: &timestamppb.Timestamp{
+			Seconds: time.Now().Unix(),
+		},
+		InventoryStatus: status,
+		StatusMsg:       statusMessage,
+		InventoryPage: &cwssaws.InventoryPage{
+			TotalPages:  int32(totalPages),
+			CurrentPage: int32(page),
+			PageSize:    int32(pageSize),
+			TotalItems:  int32(totalCount),
+			ItemIds:     allExpectedMachineIDs,
+		},
+	}
+
+	return inventoryPage
+}
+
+// NewManageExpectedMachineInventory returns a ManageInventory implementation for Expected Machine activity
+func NewManageExpectedMachineInventory(siteID uuid.UUID, carbideAtomicClient *cclient.CarbideAtomicClient, temporalPublishClient tClient.Client, temporalPublishQueue string, cloudPageSize int) ManageExpectedMachineInventory {
+	return ManageExpectedMachineInventory{
+		siteID:                siteID,
+		carbideAtomicClient:   carbideAtomicClient,
+		temporalPublishClient: temporalPublishClient,
+		temporalPublishQueue:  temporalPublishQueue,
+		cloudPageSize:         cloudPageSize,
+	}
+}
+
+// ManageExpectedMachine is an activity wrapper for Expected Machine management
+type ManageExpectedMachine struct {
+	CarbideAtomicClient *cclient.CarbideAtomicClient
+}
+
+// NewManageExpectedMachine returns a new ManageExpectedMachine client
+func NewManageExpectedMachine(carbideClient *cclient.CarbideAtomicClient) ManageExpectedMachine {
+	return ManageExpectedMachine{
+		CarbideAtomicClient: carbideClient,
+	}
+}
+
+// CreateExpectedMachineOnSite creates Expected Machine with Carbide
+func (mem *ManageExpectedMachine) CreateExpectedMachineOnSite(ctx context.Context, request *cwssaws.ExpectedMachine) error {
+	logger := log.With().Str("Activity", "CreateExpectedMachineOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty create Expected Machine request")
+	} else if id := request.GetId(); id == nil || (*id).String() == "" {
+		err = errors.New("received create Expected Machine request without required id field")
+	} else if request.GetBmcMacAddress() == "" || request.GetChassisSerialNumber() == "" {
+		err = errors.New("received create Expected Machine request with missing MAC or serial")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mem.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	// Call Forge gRPC endpoint
+	_, err = forgeClient.AddExpectedMachine(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create Expected Machine using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// UpdateExpectedMachineOnSite updates Expected Machine on Carbide
+func (mem *ManageExpectedMachine) UpdateExpectedMachineOnSite(ctx context.Context, request *cwssaws.ExpectedMachine) error {
+	logger := log.With().Str("Activity", "UpdateExpectedMachineOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty update Expected Machine request")
+	} else if id := request.GetId(); id == nil || (*id).String() == "" {
+		err = errors.New("received update Expected Machine request without required id field")
+	} else if request.GetBmcMacAddress() == "" || request.GetChassisSerialNumber() == "" {
+		err = errors.New("received update Expected Machine request with missing MAC or serial")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mem.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.UpdateExpectedMachine(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to update Expected Machine using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// DeleteExpectedMachineOnSite deletes Expected Machine on Carbide
+func (mem *ManageExpectedMachine) DeleteExpectedMachineOnSite(ctx context.Context, request *cwssaws.ExpectedMachineRequest) error {
+	logger := log.With().Str("Activity", "DeleteExpectedMachineOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty delete Expected Machine request")
+	} else if id := request.GetId(); id == nil || (*id).String() == "" {
+		err = errors.New("received delete Expected Machine request without required id field")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mem.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.DeleteExpectedMachine(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to delete Expected Machine using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// CreateExpectedMachinesOnSite creates multiple Expected Machines with Carbide using the carbide batch endpoint
+func (mem *ManageExpectedMachine) CreateExpectedMachinesOnSite(ctx context.Context, request *cwssaws.BatchExpectedMachineOperationRequest) (*cwssaws.BatchExpectedMachineOperationResponse, error) {
+	logger := log.With().Str("Activity", "CreateExpectedMachinesOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty batch create Expected Machine request")
+	} else if request.GetExpectedMachines() == nil || len(request.GetExpectedMachines().GetExpectedMachines()) == 0 {
+		err = errors.New("received batch create Expected Machine request with empty list")
+	}
+
+	if err != nil {
+		return nil, temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC batch endpoint
+	carbideClient := mem.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	// Call the batch CreateExpectedMachines endpoint
+	response, err := forgeClient.CreateExpectedMachines(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create Expected Machines using Site Controller API")
+		return nil, swe.WrapErr(err)
+	}
+
+	// Calculate success/failure counts from results for logging
+	successes := 0
+	failures := 0
+	for _, result := range response.GetResults() {
+		if result.GetSuccess() {
+			successes++
+		} else {
+			failures++
+		}
+	}
+
+	logger.Info().
+		Int("Total", len(request.GetExpectedMachines().GetExpectedMachines())).
+		Int("Succeeded", successes).
+		Int("Failed", failures).
+		Msg("Completed activity")
+
+	return response, nil
+}
+
+// UpdateExpectedMachinesOnSite updates multiple Expected Machines on Carbide using the batch endpoint
+func (mem *ManageExpectedMachine) UpdateExpectedMachinesOnSite(ctx context.Context, request *cwssaws.BatchExpectedMachineOperationRequest) (*cwssaws.BatchExpectedMachineOperationResponse, error) {
+	logger := log.With().Str("Activity", "UpdateExpectedMachinesOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty batch update Expected Machine request")
+	} else if request.GetExpectedMachines() == nil || len(request.GetExpectedMachines().GetExpectedMachines()) == 0 {
+		err = errors.New("received batch update Expected Machine request with empty list")
+	}
+
+	if err != nil {
+		return nil, temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC batch endpoint
+	carbideClient := mem.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	// Call the batch UpdateExpectedMachines endpoint
+	response, err := forgeClient.UpdateExpectedMachines(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to update Expected Machines using Site Controller API")
+		return nil, swe.WrapErr(err)
+	}
+
+	// Calculate success/failure counts from results for logging
+	successes := 0
+	failures := 0
+	for _, result := range response.GetResults() {
+		if result.GetSuccess() {
+			successes++
+		} else {
+			failures++
+		}
+	}
+
+	logger.Info().
+		Int("Total", len(request.GetExpectedMachines().GetExpectedMachines())).
+		Int("Succeeded", successes).
+		Int("Failed", failures).
+		Msg("Completed activity")
+
+	return response, nil
+}

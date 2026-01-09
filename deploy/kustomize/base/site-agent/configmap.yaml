@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# carbide-rest-site-agent configuration (environment variables)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: carbide-rest-site-agent-config
+  labels:
+    app: carbide-rest-site-agent
+data:
+  ESA_PORT: "8080"
+  CARBIDE_ADDRESS: "carbide-rest-elektraserver:11079"
+  CARBIDE_SEC_OPT: "0"
+  # Placeholder UUID - updated by setup-local-site-agent.sh with real site ID from API
+  CLUSTER_ID: "00000000-0000-4000-8000-000000000001"
+  TEMPORAL_HOST: "temporal"
+  TEMPORAL_PORT: "7233"
+  TEMPORAL_PUBLISH_NAMESPACE: "site"
+  TEMPORAL_PUBLISH_QUEUE: "site"
+  # These are updated by setup-local-site-agent.sh to match the site ID
+  TEMPORAL_SUBSCRIBE_NAMESPACE: "00000000-0000-4000-8000-000000000001"
+  TEMPORAL_SUBSCRIBE_QUEUE: "00000000-0000-4000-8000-000000000001"
+  DEV_MODE: "true"
+  ENABLE_DEBUG: "true"
+  ENABLE_TLS: "false"
+  POD_NAME: "carbide-rest-site-agent-0"
+  POD_NAMESPACE: "carbide"
+  METRICS_PORT: "2112"
+  DB_ADDR: "postgres"
+  DB_USER: "forge"
+  DB_DATABASE: "elektratest"
+  DB_PORT: "5432"
+  OTEL_EXPORTER_OTLP_SPAN_INSECURE: "true"
+  OTEL_EXPORTER_OTLP_SPAN_ENDPOINT: ""
+  # Temporal TLS - disabled for local dev
+  TEMPORAL_CERT_PATH: "/etc/temporal-certs"
+  DISABLE_BOOTSTRAP: "true"
+

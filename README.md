@@ -1,0 +1,177 @@
+# Carbide REST API
+
+A collection of microservices that comprise the management backend for Carbide, exposed as a REST API.
+
+## Prerequisites
+
+- Go 1.25.1 or later
+- Docker 20.10+ with BuildKit enabled
+- Make
+- [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) (for local deployment)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) (for local deployment)
+- [jq](https://stedolan.github.io/jq/) (optional, for parsing JSON responses)
+
+## Quick Start
+
+### Run Unit Tests
+
+```bash
+make test
+```
+
+Tests require PostgreSQL. The Makefile automatically manages a test container.
+
+Test database configuration:
+- Host: `localhost`
+- Port: `30432`
+- User/Password: `postgres` / `postgres`
+
+### Local Deployment with Kind
+
+```bash
+make kind-reset
+```
+
+This command:
+1. Creates a Kind Kubernetes cluster
+2. Builds all Docker images
+3. Deploys all services (PostgreSQL, Temporal, Keycloak, Vault, etc.)
+4. Runs database migrations
+5. Configures PKI and site-agent
+
+Once complete, services are available at:
+
+| Service | URL |
+|---------|-----|
+| API | http://localhost:8388 |
+| Keycloak | http://localhost:8080 |
+| Temporal UI | http://localhost:8233 |
+| Vault | http://localhost:8200 |
+| Adminer (DB UI) | http://localhost:8081 |
+
+Other useful commands:
+
+```bash
+make kind-status    # Check pod status
+make kind-logs      # Tail API logs
+make kind-redeploy  # Rebuild and restart after code changes
+make kind-verify    # Run health checks
+make kind-down      # Tear down cluster
+```
+
+## Using the API
+
+### Get an Access Token
+
+```bash
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/carbide-dev/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=carbide-api" \
+  -d "client_secret=carbide-local-secret" \
+  -d "grant_type=password" \
+  -d "username=admin@example.com" \
+  -d "password=adminpassword" | jq -r .access_token)
+```
+
+### Example API Requests
+
+```bash
+# Health check
+curl -s http://localhost:8388/healthz -H "Authorization: Bearer $TOKEN" | jq .
+
+# Get current tenant (auto-creates on first access)
+curl -s "http://localhost:8388/v2/org/test-org/carbide/tenant/current" \
+  -H "Authorization: Bearer $TOKEN" | jq .
+
+# List sites
+curl -s "http://localhost:8388/v2/org/test-org/carbide/site" \
+  -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+### Test Users
+
+| Email | Password | Roles |
+|-------|----------|-------|
+| `admin@example.com` | `adminpassword` | FORGE_PROVIDER_ADMIN, FORGE_TENANT_ADMIN |
+| `testuser@example.com` | `testpassword` | FORGE_TENANT_ADMIN |
+| `provider@example.com` | `providerpassword` | FORGE_PROVIDER_ADMIN |
+
+All users have the `test-org` organization assigned.
+
+## Building Docker Images
+
+### Build All Images
+
+```bash
+make docker-build
+```
+
+Images are tagged with `localhost:5000` registry and `latest` tag by default.
+
+### Build with Custom Registry and Tag
+
+```bash
+make docker-build IMAGE_REGISTRY=my-registry.example.com/carbide IMAGE_TAG=v1.0.0
+```
+
+### Push to Your Registry
+
+1. Authenticate with your registry:
+
+```bash
+# Docker Hub
+docker login
+
+# AWS ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+
+# Google Container Registry
+gcloud auth configure-docker
+
+# Azure Container Registry
+az acr login --name myregistry
+```
+
+2. Build and push:
+
+```bash
+REGISTRY=my-registry.example.com/carbide
+TAG=v1.0.0
+
+make docker-build IMAGE_REGISTRY=$REGISTRY IMAGE_TAG=$TAG
+
+for image in carbide-rest-api carbide-rest-workflow carbide-rest-site-manager carbide-rest-site-agent carbide-rest-db carbide-rest-cert-manager; do
+    docker push "$REGISTRY/$image:$TAG"
+done
+```
+
+### Available Images
+
+| Image | Description |
+|-------|-------------|
+| `carbide-rest-api` | Main REST API (port 8388) |
+| `carbide-rest-workflow` | Temporal workflow worker |
+| `carbide-rest-site-manager` | Site management worker |
+| `carbide-rest-site-agent` | On-site agent |
+| `carbide-rest-db` | Database migrations (run to completion) |
+| `carbide-rest-cert-manager` | Certificate manager |
+
+## Architecture
+
+| Service | Binary | Description |
+|---------|--------|-------------|
+| carbide-rest-api | `api` | Main REST API server |
+| carbide-rest-workflow | `workflow` | Temporal workflow service |
+| carbide-rest-site-manager | `sitemgr` | Site management service |
+| carbide-site-agent | `elektra` | On-site agent |
+| carbide-rest-db | `migrations` | Database migrations |
+| carbide-rest-cert-manager | `credsmgr` | Certificate/credentials manager |
+
+Supporting modules:
+- **common** - Shared utilities and configurations
+- **auth** - Authentication and authorization
+- **ipam** - IP Address Management
+
+## License
+
+See [LICENSE](LICENSE) for details.

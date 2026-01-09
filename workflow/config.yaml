@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+env:
+  dev: true
+
+log:
+  level: debug
+
+db:
+  host: localhost
+  port: 30432
+  name: forge
+  user: forge
+  password: forge
+
+temporal:
+  host: localhost
+  port: 30233
+  serverName: localhost
+  namespace: cloud
+  queue: cloud
+  tls:
+    enabled: true
+    certPath: certs/client-cloud/tls.crt
+    keyPath: certs/client-cloud/tls.key
+    caPath: certs/client-cloud/ca.crt
+  encryptionKey: "local-dev"
+
+ngc:
+  api:
+    baseUrl: https://api.stg.ngc.nvidia.com
+
+notifications:
+  slack:
+    webhookURL: ""
+
+metrics:
+  enabled: true
+  port: 9360
+
+tracing:
+  enabled: false
+  serviceName: cloud-workflow
