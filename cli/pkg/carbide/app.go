@@ -1,0 +1,192 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package carbide
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/core"
+	"github.com/sirupsen/logrus"
+	cli "github.com/urfave/cli/v2"
+)
+
+// core_GetLogger wraps core.GetLogger for use from commands.go
+func core_GetLogger(ctx context.Context) *logrus.Entry {
+	return core.GetLogger(ctx)
+}
+
+// NewApp builds a cli.App from the embedded OpenAPI spec data.
+func NewApp(specData []byte) (*cli.App, error) {
+	spec, err := ParseSpec(specData)
+	if err != nil {
+		return nil, fmt.Errorf("parsing embedded spec: %w", err)
+	}
+
+	defaultBaseURL := ""
+	if len(spec.Servers) > 0 {
+		defaultBaseURL = spec.Servers[0].URL
+	}
+
+	cfg, _ := LoadConfig()
+
+	commands := BuildCommands(spec)
+	commands = append(commands, LoginCommand())
+	commands = append(commands, completionCommand())
+
+	app := &cli.App{
+		Name:                 "carbide",
+		Usage:                spec.Info.Title,
+		Version:              spec.Info.Version,
+		EnableBashCompletion: true,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "base-url",
+				Usage:   "API base URL",
+				EnvVars: []string{"CARBIDE_BASE_URL"},
+				Value:   configDefault(cfg.BaseURL, defaultBaseURL),
+			},
+			&cli.StringFlag{
+				Name:    "org",
+				Usage:   "Organization name",
+				EnvVars: []string{"CARBIDE_ORG"},
+				Value:   cfg.Org,
+			},
+			&cli.StringFlag{
+				Name:    "token",
+				Usage:   "API bearer token",
+				EnvVars: []string{"CARBIDE_TOKEN"},
+			},
+			&cli.StringFlag{
+				Name:  "token-command",
+				Usage: "Shell command that prints a bearer token",
+			},
+			&cli.StringFlag{
+				Name:  "output",
+				Usage: "Output format: json, yaml, table",
+				Value: "json",
+			},
+			&cli.BoolFlag{
+				Name:  "debug",
+				Usage: "Enable debug logging",
+			},
+			&cli.StringFlag{
+				Name:    "token-url",
+				Usage:   "OIDC token endpoint URL for login and token refresh",
+				EnvVars: []string{"CARBIDE_TOKEN_URL"},
+				Value:   cfg.TokenURL,
+			},
+			&cli.StringFlag{
+				Name:    "keycloak-url",
+				Usage:   "Keycloak base URL (constructs token-url if --token-url is not set)",
+				EnvVars: []string{"CARBIDE_KEYCLOAK_URL"},
+				Value:   cfg.KeycloakURL,
+			},
+			&cli.StringFlag{
+				Name:    "realm",
+				Usage:   "Keycloak realm (used with --keycloak-url)",
+				EnvVars: []string{"CARBIDE_REALM"},
+				Value:   configDefault(cfg.Realm, "carbide-dev"),
+			},
+			&cli.StringFlag{
+				Name:    "client-id",
+				Usage:   "OAuth client ID",
+				EnvVars: []string{"CARBIDE_CLIENT_ID"},
+				Value:   configDefault(cfg.ClientID, "carbide-api"),
+			},
+		},
+		Before: func(c *cli.Context) error {
+			if c.Bool("debug") {
+				core.GetLogger(c.Context).Logger.SetLevel(logrus.DebugLevel)
+			}
+			return nil
+		},
+		Commands: commands,
+	}
+
+	return app, nil
+}
+
+func completionCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "completion",
+		Usage: "Output shell completion script",
+		Subcommands: []*cli.Command{
+			{
+				Name:  "bash",
+				Usage: "Output bash completion script",
+				Action: func(c *cli.Context) error {
+					fmt.Print(bashCompletion)
+					return nil
+				},
+			},
+			{
+				Name:  "zsh",
+				Usage: "Output zsh completion script",
+				Action: func(c *cli.Context) error {
+					fmt.Print(zshCompletion)
+					return nil
+				},
+			},
+			{
+				Name:  "fish",
+				Usage: "Output fish completion script",
+				Action: func(c *cli.Context) error {
+					fmt.Print(fishCompletion)
+					return nil
+				},
+			},
+		},
+	}
+}
+
+const bashCompletion = `# bash completion for carbide
+# Add to ~/.bashrc:  eval "$(carbide completion bash)"
+_carbide_complete() {
+    local cur opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    opts=$(${COMP_WORDS[0]} --generate-bash-completion "${COMP_WORDS[@]:1:$COMP_CWORD}")
+    COMPREPLY=($(compgen -W "${opts}" -- "${cur}"))
+    return 0
+}
+complete -o default -F _carbide_complete carbide
+`
+
+const zshCompletion = `# zsh completion for carbide
+# Add to ~/.zshrc:  eval "$(carbide completion zsh)"
+_carbide_complete() {
+    local -a opts
+    opts=(${(f)"$(${words[1]} --generate-bash-completion ${words:1:$CURRENT-1})"})
+    _describe 'carbide' opts
+}
+compdef _carbide_complete carbide
+`
+
+const fishCompletion = `# fish completion for carbide
+# Add to ~/.config/fish/completions/carbide.fish or run:
+#   carbide completion fish > ~/.config/fish/completions/carbide.fish
+complete -c carbide -f -a '(carbide --generate-bash-completion (commandline -cop))'
+`
+
+func configDefault(cfgValue, fallback string) string {
+	if cfgValue != "" {
+		return cfgValue
+	}
+	return fallback
+}

@@ -18,3 +18,4 @@ carbide-rest
 .test-config/
 .idea/
 ref/
+cli/cmd/carbide/spec.yaml
