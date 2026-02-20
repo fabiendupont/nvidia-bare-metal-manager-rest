@@ -500,7 +500,6 @@ func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.Valid
 		actualComponents = append(actualComponents, actualComp)
 	}
 
-	// Build maps for comparison
 	expectedMap := make(map[string]*rlav1.Component)
 	for _, comp := range componentsResp.Components {
 		if comp.ComponentId != "" {
