@@ -340,6 +340,14 @@ deploy-overlay-workflow:
 
 # Full reset: tear down cluster, rebuild images, and redeploy everything
 kind-reset:
+	@# The Carbide stack requires at least 512 inotify instances for all its
+	@# pods (Temporal, cert-manager, workflow workers, etc.). Fail early with
+	@# a clear message instead of letting pods crash with "too many open files".
+	@if [ "$$(cat /proc/sys/fs/inotify/max_user_instances)" -lt 512 ]; then \
+		echo "ERROR: fs.inotify.max_user_instances is $$(cat /proc/sys/fs/inotify/max_user_instances), need at least 512"; \
+		echo "Run: sudo sysctl -w fs.inotify.max_user_instances=512"; \
+		exit 1; \
+	fi
 	-kind delete cluster --name $(KIND_CLUSTER_NAME)
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind/cluster-config.yaml
 
