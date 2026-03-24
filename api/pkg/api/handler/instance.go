@@ -384,8 +384,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	// Begin validating interfaces
 	// Fetch and validate Subnet or VPC Prefixes
-	sbDAO := cdbm.NewSubnetDAO(cih.dbSession)
-	vpDAO := cdbm.NewVpcPrefixDAO(cih.dbSession)
+	networkingSvc := networkingsvc.New(cih.dbSession)
 
 	subnetIDs := []uuid.UUID{}
 	vpcPrefixIDs := []uuid.UUID{}
@@ -412,7 +411,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// Fetch Subnets from DB by IDs
 	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
 	if len(subnetIDs) > 0 {
-		subnets, _, err := sbDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		subnets, _, err := networkingSvc.GetSubnets(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
@@ -425,7 +424,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// Fetch VPC Prefixes from DB by IDs
 	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
 	if len(vpcPrefixIDs) > 0 {
-		vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		vpcPrefixes, _, err := networkingSvc.GetVpcPrefixes(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
@@ -616,10 +615,9 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		desIDs = append(desIDs, desID)
 	}
 
-	desDAO := cdbm.NewDpuExtensionServiceDAO(cih.dbSession)
 	desIDMap := map[uuid.UUID]*cdbm.DpuExtensionService{}
 	if len(desIDs) > 0 {
-		dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		dess, _, err := networkingSvc.GetDpuExtensionServices(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
@@ -663,8 +661,6 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	// Begin validating Network Security Group
 	if apiRequest.NetworkSecurityGroupID != nil {
-		networkingSvc := networkingsvc.New(cih.dbSession)
-
 		nsg, err := networkingSvc.GetNetworkSecurityGroupByID(ctx, nil, *apiRequest.NetworkSecurityGroupID)
 		if err != nil {
 			if err == cdb.ErrDoesNotExist {
@@ -1055,12 +1051,10 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			ibpIDs = append(ibpIDs, ibpID)
 		}
 
-		ibpDAO := cdbm.NewInfiniBandPartitionDAO(cih.dbSession)
-
 		ibpIDMap := make(map[string]*cdbm.InfiniBandPartition)
 
 		if len(ibpIDs) > 0 {
-			ibps, _, err := ibpDAO.GetAll(ctx, nil, cdbm.InfiniBandPartitionFilterInput{InfiniBandPartitionIDs: ibpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+			ibps, _, err := networkingSvc.GetInfiniBandPartitions(ctx, nil, cdbm.InfiniBandPartitionFilterInput{InfiniBandPartitionIDs: ibpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 			if err != nil {
 				logger.Error().Err(err).Msg("error retrieving InfiniBand Partitions from DB by IDs")
 				return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve InfiniBand Partitions from DB by IDs", nil)
@@ -1141,12 +1135,10 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		nvllpIDs = append(nvllpIDs, nvllpID)
 	}
 
-	nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(cih.dbSession)
-
 	nvllpIDMap := make(map[string]*cdbm.NVLinkLogicalPartition)
 
 	if len(nvllpIDs) > 0 {
-		nvllps, _, err := nvllpDAO.GetAll(ctx, nil, cdbm.NVLinkLogicalPartitionFilterInput{NVLinkLogicalPartitionIDs: nvllpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		nvllps, _, err := networkingSvc.GetNVLinkLogicalPartitions(ctx, nil, cdbm.NVLinkLogicalPartitionFilterInput{NVLinkLogicalPartitionIDs: nvllpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving NVLink Logical Partitions from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NVLink Logical Partitions from DB by IDs", nil)
@@ -1302,7 +1294,6 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// Create the instance subnet record in the db from info gathered earlier
 	// The first Subnet is automatically added to the physical interface
 	ifcs := []cdbm.Interface{}
-	ifcDAO := cdbm.NewInterfaceDAO(cih.dbSession)
 	for _, dbifc := range dbInterfaces {
 		input := cdbm.InterfaceCreateInput{
 			InstanceID:         instance.ID,
@@ -1317,7 +1308,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			CreatedBy:          dbUser.ID,
 		}
 
-		retifc, serr := ifcDAO.Create(ctx, tx, input)
+		retifc, serr := networkingSvc.CreateInterface(ctx, tx, input)
 		if serr != nil {
 			logger.Error().Err(serr).Msg("error creating Instance Subnet DB entry")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Subnet entry for Instance, DB error", nil)
@@ -1379,10 +1370,9 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	// Create the instance infiniband interface record in the db from info gathered earlier IF instance type was used
 	ibifcs := []cdbm.InfiniBandInterface{}
-	ibifcDAO := cdbm.NewInfiniBandInterfaceDAO(cih.dbSession)
 
 	for _, ibifc := range dbibic {
-		retibifc, serr := ibifcDAO.Create(
+		retibifc, serr := networkingSvc.CreateInfiniBandInterface(
 			ctx,
 			tx,
 			cdbm.InfiniBandInterfaceCreateInput{
@@ -1427,10 +1417,9 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	// Create the instance NVLink Interface record in the db from info gathered earlier IF instance type was used
 	nvlifcs := []cdbm.NVLinkInterface{}
-	nvlifcDAO := cdbm.NewNVLinkInterfaceDAO(cih.dbSession)
 	nvlInterfaceConfigs := []*cwssaws.InstanceNVLinkGpuConfig{}
 	for _, nvlifc := range dbnvlic {
-		retnvlifc, serr := nvlifcDAO.Create(
+		retnvlifc, serr := networkingSvc.CreateNVLinkInterface(
 			ctx,
 			tx,
 			cdbm.NVLinkInterfaceCreateInput{
@@ -1723,8 +1712,7 @@ func (uih UpdateInstanceHandler) handleReboot(c echo.Context, logger *zerolog.Lo
 	}
 
 	// Get the instance subnets record from the db
-	ifcDAO := cdbm.NewInterfaceDAO(uih.dbSession)
-	retifc, _, err := ifcDAO.GetAll(ctx, tx, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
+	retifc, _, err := networkingsvc.New(uih.dbSession).GetInterfaces(ctx, tx, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving Instance Subnets Details from DB")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance Subnets for Instance", nil)
@@ -2199,10 +2187,9 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 
 	// If an NSG was requested, validate it.
 	// A blank NSG ID means the user is updating to clear the field.
+	networkingSvc := networkingsvc.New(uih.dbSession)
 	var nsgID *string
 	if apiRequest.NetworkSecurityGroupID != nil && *apiRequest.NetworkSecurityGroupID != "" {
-		networkingSvc := networkingsvc.New(uih.dbSession)
-
 		nsg, err := networkingSvc.GetNetworkSecurityGroupByID(ctx, nil, *apiRequest.NetworkSecurityGroupID)
 		if err != nil {
 			if err == cdb.ErrDoesNotExist {
@@ -2228,8 +2215,6 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate Interfaces if present
-	sbDAO := cdbm.NewSubnetDAO(uih.dbSession)
-	vpDAO := cdbm.NewVpcPrefixDAO(uih.dbSession)
 
 	// Collect all Subnet and VPC Prefix IDs for batch query
 	subnetIDs := []uuid.UUID{}
@@ -2257,7 +2242,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// Batch fetch Subnets from DB
 	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
 	if len(subnetIDs) > 0 {
-		subnetList, _, err := sbDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		subnetList, _, err := networkingSvc.GetSubnets(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
@@ -2270,7 +2255,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// Batch fetch VPC Prefixes from DB
 	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
 	if len(vpcPrefixIDs) > 0 {
-		vpcPrefixList, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		vpcPrefixList, _, err := networkingSvc.GetVpcPrefixes(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
@@ -2489,8 +2474,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// Batch fetch InfiniBand Partitions from DB
 	ibpIDMap := make(map[uuid.UUID]*cdbm.InfiniBandPartition)
 	if len(ibpIDs) > 0 {
-		ibpDAO := cdbm.NewInfiniBandPartitionDAO(uih.dbSession)
-		ibps, _, err := ibpDAO.GetAll(ctx, nil, cdbm.InfiniBandPartitionFilterInput{InfiniBandPartitionIDs: ibpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		ibps, _, err := networkingSvc.GetInfiniBandPartitions(ctx, nil, cdbm.InfiniBandPartitionFilterInput{InfiniBandPartitionIDs: ibpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving InfiniBand Partitions from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve InfiniBand Partitions from DB by IDs", nil)
@@ -2569,10 +2553,9 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Batch fetch DPU Extension Services from DB
-	desDAO := cdbm.NewDpuExtensionServiceDAO(uih.dbSession)
 	desIDMap := make(map[uuid.UUID]*cdbm.DpuExtensionService)
 	if len(desIDs) > 0 {
-		dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		dess, _, err := networkingSvc.GetDpuExtensionServices(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
@@ -2614,8 +2597,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	if len(apiRequest.NVLinkInterfaces) > 0 {
-		nvlIfcDAO := cdbm.NewNVLinkInterfaceDAO(uih.dbSession)
-		nvlIfcs, _, err := nvlIfcDAO.GetAll(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, nil)
+		nvlIfcs, _, err := networkingSvc.GetNVLinkInterfaces(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving NVLink Interfaces from DB for Instance")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NVLink Interfaces for Instance", nil)
@@ -2642,10 +2624,9 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	nvllpIDs = goset.NewSet(nvllpIDs...).ToSlice()
 
 	// Batch fetch NVLink Logical Partitions from DB
-	nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(uih.dbSession)
 	nvllpIDMap := make(map[uuid.UUID]*cdbm.NVLinkLogicalPartition)
 	if len(nvllpIDs) > 0 {
-		nvllps, _, err := nvllpDAO.GetAll(ctx, nil, cdbm.NVLinkLogicalPartitionFilterInput{NVLinkLogicalPartitionIDs: nvllpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		nvllps, _, err := networkingSvc.GetNVLinkLogicalPartitions(ctx, nil, cdbm.NVLinkLogicalPartitionFilterInput{NVLinkLogicalPartitionIDs: nvllpIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving NVLink Logical Partitions from DB by IDs")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NVLink Logical Partitions from DB by IDs", nil)
@@ -2931,12 +2912,10 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 
 	// Create new Interface records in the DB if specified in request
 
-	ifcDAO := cdbm.NewInterfaceDAO(uih.dbSession)
-
 	// OrderAscending is our best-effort to make sure we send
 	// Carbide the interfaces in the order it originally received them
 	// so the config doesn't get rejected.
-	existingIfcs, _, err := ifcDAO.GetAll(ctx, tx, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.InterfaceOrderByCreated, Order: cdbp.OrderAscending}}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
+	existingIfcs, _, err := networkingSvc.GetInterfaces(ctx, tx, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.InterfaceOrderByCreated, Order: cdbp.OrderAscending}}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve current Ethernet Interfaces details for Instance")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current Ethernet Interfaces for Instance, DB error", nil)
@@ -2959,7 +2938,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				CreatedBy:          dbUser.ID,
 			}
 
-			newDbifc, serr := ifcDAO.Create(ctx, tx, input)
+			newDbifc, serr := networkingSvc.CreateInterface(ctx, tx, input)
 			if serr != nil {
 				logger.Error().Err(serr).Msg("error creating Instance Interface DB entry")
 				return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Interface entry for Instance, DB error", nil)
@@ -2974,7 +2953,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		// Update status of existing Interfaces to Deleting
 		for i := range existingIfcs {
 			existingIfcs[i].Status = cdbm.InterfaceStatusDeleting
-			_, err := ifcDAO.Update(ctx, tx, cdbm.InterfaceUpdateInput{InterfaceID: existingIfcs[i].ID, Status: cdb.GetStrPtr(cdbm.InterfaceStatusDeleting)})
+			_, err := networkingSvc.UpdateInterface(ctx, tx, cdbm.InterfaceUpdateInput{InterfaceID: existingIfcs[i].ID, Status: cdb.GetStrPtr(cdbm.InterfaceStatusDeleting)})
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to update Interface record in DB")
 				return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Interface for Instance, DB error", nil)
@@ -2987,10 +2966,8 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// Create new InfiniBand Interface records in the DB if specified in request
 	var newIbIfcs []cdbm.InfiniBandInterface
 
-	ibiDAO := cdbm.NewInfiniBandInterfaceDAO(uih.dbSession)
-
 	// OrderAscending is our best-effort to make sure we send Carbide the interfaces in the order it originally received them. so the config doesn't get rejected
-	existingIbIfcs, _, err := ibiDAO.GetAll(ctx, tx, cdbm.InfiniBandInterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.InfiniBandInterfaceOrderByCreated, Order: cdbp.OrderAscending}}, nil)
+	existingIbIfcs, _, err := networkingSvc.GetInfiniBandInterfaces(ctx, tx, cdbm.InfiniBandInterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.InfiniBandInterfaceOrderByCreated, Order: cdbp.OrderAscending}}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve InfinibandInterface details for Instance")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Infiniband Interfaces for Instance, DB error", nil)
@@ -3005,7 +2982,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to parse InfiniBand Partition ID specified in request: %s", apiibifc.InfiniBandPartitionID), nil)
 			}
 
-			dbibifc, err := ibiDAO.Create(ctx, tx, cdbm.InfiniBandInterfaceCreateInput{
+			dbibifc, err := networkingSvc.CreateInfiniBandInterface(ctx, tx, cdbm.InfiniBandInterfaceCreateInput{
 				InstanceID:            instanceID,
 				SiteID:                site.ID,
 				InfiniBandPartitionID: ibpID,
@@ -3029,7 +3006,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		// Update status of existing InfiniBand Interfaces to Deleting
 		for i := range existingIbIfcs {
 			existingIbIfcs[i].Status = cdbm.InfiniBandInterfaceStatusDeleting
-			_, err = ibiDAO.Update(ctx, tx, cdbm.InfiniBandInterfaceUpdateInput{
+			_, err = networkingSvc.UpdateInfiniBandInterface(ctx, tx, cdbm.InfiniBandInterfaceUpdateInput{
 				InfiniBandInterfaceID: existingIbIfcs[i].ID,
 				Status:                cdb.GetStrPtr(cdbm.InfiniBandInterfaceStatusDeleting),
 			})
@@ -3120,10 +3097,9 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 
 	// Create new NVLink Interface records in the DB if specified in request
 	var newNvlIfcs []cdbm.NVLinkInterface
-	nvlIfcDAO := cdbm.NewNVLinkInterfaceDAO(uih.dbSession)
 
 	// OrderAscending is our best-effort to make sure we send Carbide the interfaces in the order it originally received them. so the config doesn't get rejected
-	existingNvlIfcs, _, err := nvlIfcDAO.GetAll(ctx, tx, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.NVLinkInterfaceOrderByCreated, Order: cdbp.OrderAscending}}, nil)
+	existingNvlIfcs, _, err := networkingSvc.GetNVLinkInterfaces(ctx, tx, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.NVLinkInterfaceOrderByCreated, Order: cdbp.OrderAscending}}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve NVLink Interfaces details for Instance")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NVLink interfaces for Instance, DB error", nil)
@@ -3144,7 +3120,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		nvllpIDMap := make(map[string]*cdbm.NVLinkLogicalPartition)
 
 		if nvllpIDs.Cardinality() > 0 {
-			nvllps, _, err := nvllpDAO.GetAll(ctx, nil, cdbm.NVLinkLogicalPartitionFilterInput{NVLinkLogicalPartitionIDs: nvllpIDs.ToSlice()}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+			nvllps, _, err := networkingSvc.GetNVLinkLogicalPartitions(ctx, nil, cdbm.NVLinkLogicalPartitionFilterInput{NVLinkLogicalPartitionIDs: nvllpIDs.ToSlice()}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 			if err != nil {
 				logger.Error().Err(err).Msg("error retrieving NVLink Logical Partitions from DB by IDs")
 				return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NVLink Logical Partitions specified in request data, DB error", nil)
@@ -3160,7 +3136,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could not find NVLink Logical Partition with ID: %v specified in request data", apiNvlIfc.NVLinkLogicalPartitionID), nil)
 			}
 
-			newNvlIfc, err := nvlIfcDAO.Create(ctx, tx, cdbm.NVLinkInterfaceCreateInput{
+			newNvlIfc, err := networkingSvc.CreateNVLinkInterface(ctx, tx, cdbm.NVLinkInterfaceCreateInput{
 				InstanceID:               instanceID,
 				SiteID:                   site.ID,
 				NVLinkLogicalPartitionID: nvllPartition.ID,
@@ -3186,7 +3162,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 					Status:            cdb.GetStrPtr(cdbm.NVLinkInterfaceStatusDeleting),
 				}
 			}
-			_, err := nvlIfcDAO.UpdateMultiple(ctx, tx, nvlIfcUpdateInputs)
+			_, err := networkingSvc.UpdateMultipleNVLinkInterfaces(ctx, tx, nvlIfcUpdateInputs)
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to update NVLink Interface records in DB")
 				return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update NVLink Interfaces for Instance, DB error", nil)
@@ -3678,16 +3654,15 @@ func (gih GetInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Get the instance subnets record from the db
-	ifcDAO := cdbm.NewInterfaceDAO(gih.dbSession)
-	ifcs, _, err := ifcDAO.GetAll(ctx, nil, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
+	networkingSvc := networkingsvc.New(gih.dbSession)
+	ifcs, _, err := networkingSvc.GetInterfaces(ctx, nil, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving instance Subnet Details from DB")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance Subnets for Instance", nil)
 	}
 
 	// Get the instance infiniband interface record from the db
-	ibifcDAO := cdbm.NewInfiniBandInterfaceDAO(gih.dbSession)
-	ibIfcs, _, err := ibifcDAO.GetAll(
+	ibIfcs, _, err := networkingSvc.GetInfiniBandInterfaces(
 		ctx,
 		nil,
 		cdbm.InfiniBandInterfaceFilterInput{
@@ -3721,8 +3696,7 @@ func (gih GetInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Get the instance NVLink Interface record from the db
-	nvlDAO := cdbm.NewNVLinkInterfaceDAO(gih.dbSession)
-	nvlIfcs, _, err := nvlDAO.GetAll(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, cdbp.PageInput{}, nil)
+	nvlIfcs, _, err := networkingSvc.GetNVLinkInterfaces(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, cdbp.PageInput{}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving instance NVLink interfaces Details from DB")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance NVLink interfaces for Instance", nil)
@@ -4096,12 +4070,12 @@ func (gaih GetAllInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Get IP addresses from query param and filter by interface IPs
+	networkingSvc := networkingsvc.New(gaih.dbSession)
 	if ipAddresses := qParams["ipAddress"]; len(ipAddresses) != 0 {
 		gaih.tracerSpan.SetAttribute(handlerSpan, attribute.StringSlice("ipAddress", ipAddresses), logger)
 
 		// GetAll interfaces matching specified IP addresses
-		ifcDAO := cdbm.NewInterfaceDAO(gaih.dbSession)
-		matchingIfcs, _, err := ifcDAO.GetAll(ctx, nil, cdbm.InterfaceFilterInput{IPAddresses: ipAddresses}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		matchingIfcs, _, err := networkingSvc.GetInterfaces(ctx, nil, cdbm.InterfaceFilterInput{IPAddresses: ipAddresses}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving Interfaces for IP filtering")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Interfaces for IP filtering", nil)
@@ -4170,15 +4144,12 @@ func (gaih GetAllInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Create response
-	ifcDAO := cdbm.NewInterfaceDAO(gaih.dbSession)
-	ibifcDAO := cdbm.NewInfiniBandInterfaceDAO(gaih.dbSession)
-	nvlDAO := cdbm.NewNVLinkInterfaceDAO(gaih.dbSession)
 	skgiaDAO := cdbm.NewSSHKeyGroupInstanceAssociationDAO(gaih.dbSession)
 
 	// Create a map for instanceID -> set of VPCs
 	vpcsByInstance := map[uuid.UUID]goset.Set[uuid.UUID]{}
 
-	ifcs, _, serr := ifcDAO.GetAll(ctx, nil, cdbm.InterfaceFilterInput{InstanceIDs: insIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
+	ifcs, _, serr := networkingSvc.GetInterfaces(ctx, nil, cdbm.InterfaceFilterInput{InstanceIDs: insIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
 	if serr != nil {
 		// Log error and continue
 		logger.Error().Err(serr).Msg("error retrieving Instance Subnets for Instance from DB")
@@ -4223,7 +4194,7 @@ func (gaih GetAllInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Get the instance infiniband interface record from the db
-	ibifcs, _, serr := ibifcDAO.GetAll(
+	ibifcs, _, serr := networkingSvc.GetInfiniBandInterfaces(
 		ctx,
 		nil,
 		cdbm.InfiniBandInterfaceFilterInput{
@@ -4246,7 +4217,7 @@ func (gaih GetAllInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Get the instance NVLink Interface record from the db
-	retnvlifc, _, serr := nvlDAO.GetAll(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: insIDs}, cdbp.PageInput{}, nil)
+	retnvlifc, _, serr := networkingSvc.GetNVLinkInterfaces(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: insIDs}, cdbp.PageInput{}, nil)
 	if serr != nil {
 		logger.Error().Err(serr).Msg("error retrieving instance NVLink interfaces Details from DB")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance NVLink interfaces for Instance", nil)
@@ -4299,8 +4270,6 @@ func (gaih GetAllInstanceHandler) Handle(c echo.Context) error {
 	// Only if there's at least one possible case
 	// of inheritence.
 	if !inheritVpcIDs.IsEmpty() {
-
-		networkingSvc := networkingsvc.New(gaih.dbSession)
 
 		vpcFilter := cdbm.VpcFilterInput{
 			VpcIDs: inheritVpcIDs.ToSlice(),
