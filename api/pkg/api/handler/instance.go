@@ -38,7 +38,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
-	"github.com/NVIDIA/ncx-infra-controller-rest/api/internal/config"
+	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/config"
 	common "github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/handler/util/common"
 	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/model"
 	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/pagination"
@@ -48,6 +48,7 @@ import (
 	cdb "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db"
 	cdbm "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db/model"
 	cdbp "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db/paginator"
+	networkingsvc "github.com/NVIDIA/ncx-infra-controller-rest/providers/networking/networkingsvc"
 	swe "github.com/NVIDIA/ncx-infra-controller-rest/site-workflow/pkg/error"
 	cwssaws "github.com/NVIDIA/ncx-infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/NVIDIA/ncx-infra-controller-rest/workflow/pkg/queue"
@@ -662,9 +663,9 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	// Begin validating Network Security Group
 	if apiRequest.NetworkSecurityGroupID != nil {
-		nsgDAO := cdbm.NewNetworkSecurityGroupDAO(cih.dbSession)
+		networkingSvc := networkingsvc.New(cih.dbSession)
 
-		nsg, err := nsgDAO.GetByID(ctx, nil, *apiRequest.NetworkSecurityGroupID, nil)
+		nsg, err := networkingSvc.GetNetworkSecurityGroupByID(ctx, nil, *apiRequest.NetworkSecurityGroupID)
 		if err != nil {
 			if err == cdb.ErrDoesNotExist {
 				return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could not find NetworkSecurityGroup with ID: %s specified in request", *apiRequest.NetworkSecurityGroupID), nil)
@@ -2200,9 +2201,9 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// A blank NSG ID means the user is updating to clear the field.
 	var nsgID *string
 	if apiRequest.NetworkSecurityGroupID != nil && *apiRequest.NetworkSecurityGroupID != "" {
-		nsgDAO := cdbm.NewNetworkSecurityGroupDAO(uih.dbSession)
+		networkingSvc := networkingsvc.New(uih.dbSession)
 
-		nsg, err := nsgDAO.GetByID(ctx, nil, *apiRequest.NetworkSecurityGroupID, nil)
+		nsg, err := networkingSvc.GetNetworkSecurityGroupByID(ctx, nil, *apiRequest.NetworkSecurityGroupID)
 		if err != nil {
 			if err == cdb.ErrDoesNotExist {
 				logger.Error().Err(err).Msg("could not find NetworkSecurityGroup with ID specified in request data")
@@ -4299,13 +4300,13 @@ func (gaih GetAllInstanceHandler) Handle(c echo.Context) error {
 	// of inheritence.
 	if !inheritVpcIDs.IsEmpty() {
 
-		vpcDAO := cdbm.NewVpcDAO(gaih.dbSession)
+		networkingSvc := networkingsvc.New(gaih.dbSession)
 
 		vpcFilter := cdbm.VpcFilterInput{
 			VpcIDs: inheritVpcIDs.ToSlice(),
 		}
 
-		dbVpcs, _, err := vpcDAO.GetAll(ctx, nil, vpcFilter, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		dbVpcs, _, err := networkingSvc.GetVpcs(ctx, nil, vpcFilter, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving VPCs DB entities")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPCs for Instances", nil)
