@@ -40,10 +40,11 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/google/uuid"
 
-	"github.com/NVIDIA/ncx-infra-controller-rest/api/internal/config"
+	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/config"
 	common "github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/handler/util/common"
 	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/model"
 	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/pagination"
+	computesvc "github.com/NVIDIA/ncx-infra-controller-rest/providers/compute/computesvc"
 	sc "github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/client/site"
 	auth "github.com/NVIDIA/ncx-infra-controller-rest/auth/pkg/authorization"
 	cutil "github.com/NVIDIA/ncx-infra-controller-rest/common/pkg/util"
@@ -155,9 +156,9 @@ func (cvh CreateVPCHandler) Handle(c echo.Context) error {
 	}
 
 	// Ensure that Tenant has an Allocation with specified Site
-	aDAO := cdbm.NewAllocationDAO(cvh.dbSession)
+	computeSvc := computesvc.New(cvh.dbSession)
 	allocationFilter := cdbm.AllocationFilterInput{TenantIDs: []uuid.UUID{tenant.ID}, SiteIDs: []uuid.UUID{site.ID}}
-	aCount, err := aDAO.GetCount(ctx, nil, allocationFilter)
+	aCount, err := computeSvc.GetAllocationsCount(ctx, nil, allocationFilter)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving Allocations count from DB for Tenant and Site")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site Allocations count for Tenant", nil)
@@ -617,9 +618,9 @@ func (uvh UpdateVPCHandler) Handle(c echo.Context) error {
 	}
 
 	// Ensure that Tenant has an Allocation with specified Site
-	aDAO := cdbm.NewAllocationDAO(uvh.dbSession)
+	computeSvc := computesvc.New(uvh.dbSession)
 	allocationFilter := cdbm.AllocationFilterInput{TenantIDs: []uuid.UUID{tenant.ID}, SiteIDs: []uuid.UUID{vpc.SiteID}}
-	aCount, err := aDAO.GetCount(ctx, nil, allocationFilter)
+	aCount, err := computeSvc.GetAllocationsCount(ctx, nil, allocationFilter)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving Allocations count from DB for Tenant and Site")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site Allocations count for Tenant", nil)
@@ -693,8 +694,7 @@ func (uvh UpdateVPCHandler) Handle(c echo.Context) error {
 		}
 
 		// Verify that the existing default NVLink Logical Partition is not being used by any Instance from the VPC
-		instanceDAO := cdbm.NewInstanceDAO(uvh.dbSession)
-		instances, _, err := instanceDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{VpcIDs: []uuid.UUID{vpc.ID}}, cdbp.PageInput{}, nil)
+		instances, _, err := computeSvc.GetInstances(ctx, nil, cdbm.InstanceFilterInput{VpcIDs: []uuid.UUID{vpc.ID}}, cdbp.PageInput{})
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving Instances from DB for VPC")
 			return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instances for VPC", nil)
@@ -1753,8 +1753,8 @@ func (dvh DeleteVPCHandler) Handle(c echo.Context) error {
 	}
 
 	// Check if VPC has instance
-	insDAO := cdbm.NewInstanceDAO(dvh.dbSession)
-	instances, _, err := insDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{TenantIDs: []uuid.UUID{vpc.TenantID}, VpcIDs: []uuid.UUID{vpc.ID}}, cdbp.PageInput{}, []string{})
+	computeSvc := computesvc.New(dvh.dbSession)
+	instances, _, err := computeSvc.GetInstances(ctx, nil, cdbm.InstanceFilterInput{TenantIDs: []uuid.UUID{vpc.TenantID}, VpcIDs: []uuid.UUID{vpc.ID}}, cdbp.PageInput{})
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving instances for this VPC")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve instances for this VPC", nil)

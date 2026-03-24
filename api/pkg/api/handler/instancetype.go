@@ -44,7 +44,7 @@ import (
 	cwma "github.com/NVIDIA/ncx-infra-controller-rest/workflow/pkg/activity/machine"
 	cwu "github.com/NVIDIA/ncx-infra-controller-rest/workflow/pkg/util"
 
-	"github.com/NVIDIA/ncx-infra-controller-rest/api/internal/config"
+	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/config"
 	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/handler/util"
 	"github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/handler/util/common"
 	ch "github.com/NVIDIA/ncx-infra-controller-rest/api/pkg/api/handler/util/common"
