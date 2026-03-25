@@ -20,3 +20,10 @@ build/
 ref/
 .debug/
 .cursor
+
+# Compiled migration binary
+db/cmd/migrations/migrations
+
+# SDK submodule (tracked in feat/sdk-submodule branch, not here)
+sdk/standard/go.mod
+sdk/standard/go.sum
