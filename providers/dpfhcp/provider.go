@@ -19,6 +19,10 @@ package dpfhcp
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/NVIDIA/ncx-infra-controller-rest/provider"
 )
@@ -50,6 +54,26 @@ func (p *DPFHCPProvider) Dependencies() []string { return []string{"nico-site"} 
 func (p *DPFHCPProvider) Init(ctx provider.ProviderContext) error {
 	p.store = NewProvisioningStore()
 	p.apiPathPrefix = ctx.APIPathPrefix
+
+	// Initialize K8s client for DPFHCPProvisioner CR management.
+	// Try in-cluster config first, fall back to kubeconfig.
+	k8sClient, err := NewDPFHCPClient()
+	if err != nil {
+		kubeconfigPath := os.Getenv("KUBECONFIG")
+		if kubeconfigPath == "" {
+			kubeconfigPath = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+		}
+		k8sClient, err = NewDPFHCPClientFromKubeconfig(kubeconfigPath)
+		if err != nil {
+			log.Warn().Err(err).Msg("K8s client not available; DPF HCP CR operations will fail")
+		}
+	}
+	p.k8sClient = k8sClient
+
+	if ctx.Registry != nil {
+		p.registerHooks(ctx.Registry)
+	}
+
 	return nil
 }
 

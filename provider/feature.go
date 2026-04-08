@@ -33,6 +33,8 @@ var AllFeatures = []string{
 	"dcim",
 	"dpf-hcp",
 	"fabric",
+	"ansible-fabric",
+	"ib-fabric",
 	"fault-management",
 }
 

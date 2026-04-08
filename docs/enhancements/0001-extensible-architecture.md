@@ -356,15 +356,16 @@ regression comparison.
 | nico-showback | showback | ncp |
 | nico-dpfhcp | dpf-hcp | ncp |
 
-### Partner (examples)
+### Complementary / Partner (examples)
 
-| Provider | Features | Replaces |
-|----------|----------|----------|
-| netris-networking | networking | nico-networking |
-| vast-storage | storage | (new feature) |
-| weka-storage | storage | (new feature) |
-| infoblox-dns | dns | (new feature) |
-| netbox-dcim | dcim | (new feature) |
+| Provider | Features | Type |
+|----------|----------|------|
+| netris-fabric | fabric | Complementary — physical switch sync via hooks |
+| ansible-fabric | ansible-fabric, ib-fabric | Complementary — AAP job templates for fabric automation |
+| vast-storage | storage | New feature |
+| weka-storage | storage | New feature |
+| infoblox-dns | dns | Alternative |
+| netbox-dcim | dcim | New feature |
 
 ## Risks and mitigations
 

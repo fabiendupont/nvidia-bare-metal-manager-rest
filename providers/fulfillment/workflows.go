@@ -46,4 +46,13 @@ func (p *FulfillmentProvider) RegisterActivities(w tsdkWorker.Worker) {
 
 	execActivities := NewExecutionActivities(p.orderStore, p.serviceStore)
 	w.RegisterActivity(execActivities)
+
+	if p.networking != nil && p.compute != nil {
+		provActivities := NewProvisioningActivities(
+			p.networking.Service(),
+			p.compute.Service(),
+			p.serviceStore,
+		)
+		w.RegisterActivity(provActivities)
+	}
 }

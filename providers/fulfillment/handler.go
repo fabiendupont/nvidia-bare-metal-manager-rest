@@ -54,7 +54,14 @@ func NewOrderHandler(orders *OrderStore) *OrderHandler {
 func (h *OrderHandler) Create(c echo.Context) error {
 	var req createOrderRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": err.Error()})
+	}
+
+	if req.TemplateID == uuid.Nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "template_id is required"})
+	}
+	if req.TenantID == uuid.Nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "tenant_id is required"})
 	}
 
 	now := time.Now().UTC()
@@ -70,7 +77,7 @@ func (h *OrderHandler) Create(c echo.Context) error {
 	}
 
 	if err := h.orders.Create(order); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
 	}
 
 	return c.JSON(http.StatusCreated, order)
@@ -80,12 +87,12 @@ func (h *OrderHandler) Create(c echo.Context) error {
 func (h *OrderHandler) Get(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid order id"})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid order id"})
 	}
 
 	order, err := h.orders.Get(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, order)
@@ -95,21 +102,21 @@ func (h *OrderHandler) Get(c echo.Context) error {
 func (h *OrderHandler) Cancel(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid order id"})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid order id"})
 	}
 
 	order, err := h.orders.Get(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
 	order.Status = OrderStatusCancelled
 	order.Updated = time.Now().UTC()
 	if err := h.orders.Update(order); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, order)
+	return c.NoContent(http.StatusNoContent)
 }
 
 // ServiceHandler handles service-related HTTP requests.
@@ -128,7 +135,7 @@ func (h *ServiceHandler) List(c echo.Context) error {
 	if tenantParam != "" {
 		tenantID, err := uuid.Parse(tenantParam)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid tenant_id"})
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid tenant_id"})
 		}
 		return c.JSON(http.StatusOK, h.services.ListByTenant(tenantID))
 	}
@@ -139,12 +146,12 @@ func (h *ServiceHandler) List(c echo.Context) error {
 func (h *ServiceHandler) Get(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid service id"})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid service id"})
 	}
 
 	svc, err := h.services.Get(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, svc)
@@ -154,17 +161,17 @@ func (h *ServiceHandler) Get(c echo.Context) error {
 func (h *ServiceHandler) Update(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid service id"})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid service id"})
 	}
 
 	svc, err := h.services.Get(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
 	var req updateServiceRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": err.Error()})
 	}
 
 	if req.Name != nil {
@@ -182,7 +189,7 @@ func (h *ServiceHandler) Update(c echo.Context) error {
 	svc.Status = ServiceStatusUpdating
 	svc.Updated = time.Now().UTC()
 	if err := h.services.Update(svc); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, svc)
@@ -192,19 +199,19 @@ func (h *ServiceHandler) Update(c echo.Context) error {
 func (h *ServiceHandler) Delete(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid service id"})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid service id"})
 	}
 
 	svc, err := h.services.Get(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
 	svc.Status = ServiceStatusTerminating
 	svc.Updated = time.Now().UTC()
 	if err := h.services.Update(svc); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, svc)
+	return c.NoContent(http.StatusNoContent)
 }

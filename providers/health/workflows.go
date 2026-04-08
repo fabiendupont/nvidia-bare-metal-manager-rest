@@ -62,7 +62,7 @@ func FaultRemediationWorkflow(ctx workflow.Context, faultEventID string) error {
 	}
 
 	activityOptions := workflow.ActivityOptions{
-		StartToCloseTimeout: 30 * time.Second,
+		StartToCloseTimeout: 5 * time.Minute,
 		RetryPolicy:         retrypolicy,
 	}
 
@@ -89,7 +89,7 @@ func FaultRemediationWorkflow(ctx workflow.Context, faultEventID string) error {
 		return err
 	}
 
-	// Step 3: Remediate — GPU reset placeholder
+	// Step 3: Remediate — execute component-specific recovery action
 	logger.Info().Msg("remediating fault")
 	err = workflow.ExecuteActivity(actCtx, activities.RemediateGPU, faultEventID, mapping).Get(ctx, nil)
 	if err != nil {
@@ -98,7 +98,7 @@ func FaultRemediationWorkflow(ctx workflow.Context, faultEventID string) error {
 		return err
 	}
 
-	// Step 4: ValidateRecovery — placeholder validation
+	// Step 4: ValidateRecovery — run component-specific diagnostics
 	logger.Info().Msg("validating recovery")
 	err = workflow.ExecuteActivity(actCtx, activities.ValidateRecovery, faultEventID, mapping).Get(ctx, nil)
 	if err != nil {

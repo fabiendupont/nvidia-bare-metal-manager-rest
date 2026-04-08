@@ -144,7 +144,10 @@ func (mv ManageVpc) CreateVpcViaSiteAgent(ctx context.Context, siteID uuid.UUID,
 
 	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site agent workflow to create VPC")
 
-	mv.fireAsync(ctx, "networking", "post-create-vpc", vpcID)
+	mv.fireAsync(ctx, "networking", "post-create-vpc", map[string]interface{}{
+		"vpc_id":  vpcID.String(),
+		"site_id": siteID.String(),
+	})
 
 	logger.Info().Msg("completed activity")
 
@@ -218,7 +221,10 @@ func (mv ManageVpc) DeleteVpcViaSiteAgent(ctx context.Context, siteID uuid.UUID,
 
 	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site agent workflow to delete VPC")
 
-	mv.fireAsync(ctx, "networking", "post-delete-vpc", vpcID)
+	mv.fireAsync(ctx, "networking", "post-delete-vpc", map[string]interface{}{
+		"vpc_id":  vpcID.String(),
+		"site_id": siteID.String(),
+	})
 
 	logger.Info().Msg("completed activity")
 

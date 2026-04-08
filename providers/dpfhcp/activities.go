@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// defaultCRNamespace is the namespace used for DPFHCPProvisioner CRs.
-	defaultCRNamespace = "dpf-operator-system"
+	// defaultCRNamespace uses the shared DefaultNamespace constant.
+	defaultCRNamespace = DefaultNamespace
 
 	// crNamePrefix is used to derive the CR name from a site ID.
 	crNamePrefix = "dpfhcp-"

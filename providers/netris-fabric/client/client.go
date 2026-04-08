@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Config holds the connection parameters for a Netris Controller.
@@ -50,7 +51,7 @@ func New(cfg Config) (*Client, error) {
 	}
 
 	c := &Client{
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    strings.TrimRight(cfg.URL, "/"),
 		username:   cfg.Username,
 		password:   cfg.Password,

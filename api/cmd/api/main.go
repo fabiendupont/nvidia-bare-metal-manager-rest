@@ -121,8 +121,8 @@ func main() {
 		func() provider.Provider { return networking.New() },
 		func() provider.Provider { return compute.New() },
 		func() provider.Provider { return health.New() },
-		func() provider.Provider { return firmware.New() },
 		func() provider.Provider { return nvswitch.New() },
+		// firmware omitted: depends on nico-site which is not in this profile
 	})
 	provider.RegisterProfileProviders(provider.ProfileSite, []func() provider.Provider{
 		func() provider.Provider { return networking.New() },

@@ -56,7 +56,8 @@ func (s *OrderStore) Get(id uuid.UUID) (*Order, error) {
 	if !ok {
 		return nil, fmt.Errorf("order %s not found", id)
 	}
-	return order, nil
+	copy := *order
+	return &copy, nil
 }
 
 // Update replaces an existing order in the store.
@@ -87,7 +88,8 @@ func (s *OrderStore) List() []*Order {
 	defer s.mu.RUnlock()
 	result := make([]*Order, 0, len(s.orders))
 	for _, o := range s.orders {
-		result = append(result, o)
+		copy := *o
+		result = append(result, &copy)
 	}
 	return result
 }
@@ -124,7 +126,8 @@ func (s *ServiceStore) Get(id uuid.UUID) (*Service, error) {
 	if !ok {
 		return nil, fmt.Errorf("service %s not found", id)
 	}
-	return svc, nil
+	copy := *svc
+	return &copy, nil
 }
 
 // Update replaces an existing service in the store.
@@ -155,7 +158,8 @@ func (s *ServiceStore) List() []*Service {
 	defer s.mu.RUnlock()
 	result := make([]*Service, 0, len(s.services))
 	for _, svc := range s.services {
-		result = append(result, svc)
+		copy := *svc
+		result = append(result, &copy)
 	}
 	return result
 }
@@ -167,7 +171,8 @@ func (s *ServiceStore) ListByTenant(tenantID uuid.UUID) []*Service {
 	var result []*Service
 	for _, svc := range s.services {
 		if svc.TenantID == tenantID {
-			result = append(result, svc)
+			copy := *svc
+			result = append(result, &copy)
 		}
 	}
 	return result

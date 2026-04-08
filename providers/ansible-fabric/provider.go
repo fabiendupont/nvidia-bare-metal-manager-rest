@@ -75,7 +75,7 @@ func NewFromEnv() *AnsibleFabricProvider {
 
 func (p *AnsibleFabricProvider) Name() string           { return "ansible-fabric" }
 func (p *AnsibleFabricProvider) Version() string        { return "0.1.0" }
-func (p *AnsibleFabricProvider) Features() []string     { return []string{"fabric", "ib-fabric"} }
+func (p *AnsibleFabricProvider) Features() []string     { return []string{"ansible-fabric", "ib-fabric"} }
 func (p *AnsibleFabricProvider) Dependencies() []string { return []string{"nico-networking"} }
 
 func (p *AnsibleFabricProvider) Init(ctx provider.ProviderContext) error {

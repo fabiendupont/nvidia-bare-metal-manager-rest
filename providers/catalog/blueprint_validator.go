@@ -173,9 +173,10 @@ func detectCycles(resources map[string]BlueprintResource) error {
 	return nil
 }
 
-// TopologicalSort returns resources in dependency order, grouped into
-// layers that can execute in parallel.
-func TopologicalSort(resources map[string]BlueprintResource) ([][]string, error) {
+// topologicalSort returns resources in dependency order, grouped into
+// layers that can execute in parallel. Used by the validator to verify
+// the DAG structure and by external callers for execution planning.
+func topologicalSort(resources map[string]BlueprintResource) ([][]string, error) {
 	if err := detectCycles(resources); err != nil {
 		return nil, err
 	}

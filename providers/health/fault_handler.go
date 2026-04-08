@@ -160,6 +160,15 @@ func (h *FaultHandler) handleListFaultEvents(c echo.Context) error {
 				"message": "Invalid limit parameter",
 			})
 		}
+		if n < 0 {
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error":   "bad_request",
+				"message": "Limit must not be negative",
+			})
+		}
+		if n > 1000 {
+			n = 1000
+		}
 		if n < len(events) {
 			events = events[:n]
 		}
