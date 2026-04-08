@@ -32,7 +32,7 @@ func (p *DPFHCPProvider) registerHooks(registry *provider.Registry) {
 	// Async: auto-provision on site creation
 	registry.RegisterReaction(provider.Reaction{
 		Feature:        "site",
-		Event:          "post-create-site",
+		Event:          provider.EventPostCreateSite,
 		TargetWorkflow: "dpfhcp-site-watcher",
 		SignalName:     "site-created",
 	})

@@ -135,7 +135,8 @@ func resolveExprValue(v interface{}, params map[string]interface{}) interface{} 
 		if val, ok := params[inner]; ok {
 			return fmt.Sprintf("%v", val)
 		}
-		// Leave resource references as placeholders for runtime resolution
+		// Resource references (e.g., {{ vpc.id }}) are resolved at execution
+		// time when the referenced resource's outputs are available
 		return match
 	})
 }

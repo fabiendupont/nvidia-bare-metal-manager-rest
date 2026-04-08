@@ -77,6 +77,10 @@ func (p *NetrisFabricProvider) SyncVPCToFabric(ctx context.Context, vpcID string
 		return fmt.Errorf("netris client not initialized")
 	}
 
+	// Lock to prevent duplicate creation between check and store
+	p.syncMu.Lock()
+	defer p.syncMu.Unlock()
+
 	// Check if already synced
 	if _, exists := p.vpcIDs.getNetrisID(vpcID); exists {
 		logger.Debug().Msg("VPC already synced to Netris, skipping")
@@ -107,6 +111,10 @@ func (p *NetrisFabricProvider) SyncSubnetToFabric(ctx context.Context, subnetID 
 	if p.client == nil {
 		return fmt.Errorf("netris client not initialized")
 	}
+
+	// Lock to prevent duplicate creation between check and store
+	p.syncMu.Lock()
+	defer p.syncMu.Unlock()
 
 	// Check if already synced
 	if _, exists := p.subnetIDs.getNetrisID(subnetID); exists {

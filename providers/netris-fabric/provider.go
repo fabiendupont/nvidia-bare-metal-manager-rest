@@ -20,6 +20,7 @@ package netrisfabric
 import (
 	"context"
 	"os"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 
@@ -42,6 +43,7 @@ type NetrisFabricProvider struct {
 	client     *client.Client
 	vpcIDs     *idMap // NICo VPC UUID → Netris VPC int ID
 	subnetIDs  *idMap // NICo Subnet UUID → Netris VNET int ID
+	syncMu     sync.Mutex
 }
 
 // New creates a new NetrisFabricProvider with explicit credentials.

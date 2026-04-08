@@ -146,6 +146,9 @@ func handleDelete(store *ProvisioningStore) echo.HandlerFunc {
 			})
 		}
 
-		return c.NoContent(http.StatusAccepted)
+		return c.JSON(http.StatusAccepted, echo.Map{
+			"siteId": siteID,
+			"status": string(StatusDeleting),
+		})
 	}
 }

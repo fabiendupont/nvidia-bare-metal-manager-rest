@@ -103,13 +103,15 @@ func TestHandleGetServiceUsage_InvalidID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
-func TestHandleGetSelfUsage_ReturnsMockData(t *testing.T) {
+func TestHandleGetSelfUsage_EmptyStore(t *testing.T) {
 	p := newTestProvider()
+	tenantID := uuid.New()
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/self/usage", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("tenant_id", tenantID.String())
 
 	err := p.handleGetSelfUsage(c)
 	require.NoError(t, err)
@@ -118,19 +120,42 @@ func TestHandleGetSelfUsage_ReturnsMockData(t *testing.T) {
 	var summary UsageSummary
 	err = json.Unmarshal(rec.Body.Bytes(), &summary)
 	require.NoError(t, err)
-
 	assert.Equal(t, "current-month", summary.Period)
-	assert.Equal(t, 120.5, summary.Metrics["gpu-hours"])
-	assert.Equal(t, 2048.0, summary.Metrics["storage-gb-hours"])
+	assert.Empty(t, summary.Metrics)
 }
 
-func TestHandleGetSelfQuotas_ReturnsMockData(t *testing.T) {
+func TestHandleGetSelfUsage_WithData(t *testing.T) {
 	p := newTestProvider()
+	tenantID := uuid.New()
+	resourceID := uuid.New()
+	p.store.StartMetering(tenantID, resourceID, "gpu-hours")
+	p.store.StopMetering(resourceID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/self/usage", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("tenant_id", tenantID.String())
+
+	err := p.handleGetSelfUsage(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var summary UsageSummary
+	err = json.Unmarshal(rec.Body.Bytes(), &summary)
+	require.NoError(t, err)
+	assert.Contains(t, summary.Metrics, "gpu-hours")
+}
+
+func TestHandleGetSelfQuotas_EmptyStore(t *testing.T) {
+	p := newTestProvider()
+	tenantID := uuid.New()
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/self/quotas", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("tenant_id", tenantID.String())
 
 	err := p.handleGetSelfQuotas(c)
 	require.NoError(t, err)
@@ -139,14 +164,29 @@ func TestHandleGetSelfQuotas_ReturnsMockData(t *testing.T) {
 	var info QuotaInfo
 	err = json.Unmarshal(rec.Body.Bytes(), &info)
 	require.NoError(t, err)
+	assert.Empty(t, info.Quotas)
+}
 
+func TestHandleGetSelfQuotas_WithData(t *testing.T) {
+	p := newTestProvider()
+	tenantID := uuid.New()
+	resourceID := uuid.New()
+	p.store.StartMetering(tenantID, resourceID, "gpu-hours")
+	p.store.StopMetering(resourceID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/self/quotas", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("tenant_id", tenantID.String())
+
+	err := p.handleGetSelfQuotas(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var info QuotaInfo
+	err = json.Unmarshal(rec.Body.Bytes(), &info)
+	require.NoError(t, err)
 	require.Contains(t, info.Quotas, "gpu-hours")
-	assert.Equal(t, 1000.0, info.Quotas["gpu-hours"].Limit)
-	assert.Equal(t, 120.5, info.Quotas["gpu-hours"].Current)
 	assert.Equal(t, "hours", info.Quotas["gpu-hours"].Unit)
-
-	require.Contains(t, info.Quotas, "storage-gb-hours")
-	assert.Equal(t, 10000.0, info.Quotas["storage-gb-hours"].Limit)
-	assert.Equal(t, 2048.0, info.Quotas["storage-gb-hours"].Current)
-	assert.Equal(t, "gb-hours", info.Quotas["storage-gb-hours"].Unit)
 }

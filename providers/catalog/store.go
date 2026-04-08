@@ -59,7 +59,8 @@ func (s *TemplateStore) GetByID(id uuid.UUID) (*ServiceTemplate, error) {
 	if !ok {
 		return nil, fmt.Errorf("template with id %s not found", id)
 	}
-	return t, nil
+	copy := *t
+	return &copy, nil
 }
 
 // GetAll returns all service templates in the store.
@@ -69,7 +70,8 @@ func (s *TemplateStore) GetAll() []*ServiceTemplate {
 
 	result := make([]*ServiceTemplate, 0, len(s.templates))
 	for _, t := range s.templates {
-		result = append(result, t)
+		copy := *t
+		result = append(result, &copy)
 	}
 	return result
 }

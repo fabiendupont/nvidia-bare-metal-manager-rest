@@ -30,9 +30,7 @@ import (
 func (p *ShowbackProvider) handleGetServiceUsage(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "invalid service id",
-		})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid service id"})
 	}
 	summary := p.store.GetUsageByService(id)
 	return c.JSON(http.StatusOK, summary)
@@ -40,37 +38,71 @@ func (p *ShowbackProvider) handleGetServiceUsage(c echo.Context) error {
 
 // handleGetSelfUsage returns total usage for the current tenant.
 // GET /self/usage
-// Placeholder: returns mock data.
+// Extracts tenant ID from auth context. Returns aggregated metrics
+// from the usage store for the current billing period.
 func (p *ShowbackProvider) handleGetSelfUsage(c echo.Context) error {
-	summary := UsageSummary{
-		TenantID: uuid.Nil,
-		Period:   "current-month",
-		Metrics: map[string]float64{
-			"gpu-hours":        120.5,
-			"storage-gb-hours": 2048.0,
-		},
+	// Extract tenant ID from auth context (set by NICo auth middleware).
+	tenantIDStr := c.Get("tenant_id")
+	if tenantIDStr == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized", "message": "tenant_id not found in auth context"})
 	}
+
+	str, ok := tenantIDStr.(string)
+	if !ok || str == "" {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized", "message": "tenant_id not found in auth context"})
+	}
+
+	tenantID, err := uuid.Parse(str)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid tenant_id"})
+	}
+
+	summary := p.store.GetUsageByTenant(tenantID)
+	summary.Period = "current-month"
 	return c.JSON(http.StatusOK, summary)
 }
 
-// handleGetSelfQuotas returns quota limits and current usage for the current tenant.
-// GET /self/quotas
-// Placeholder: returns mock data.
+// handleGetSelfQuotas returns quota limits and current usage for the
+// current tenant. Quota limits are derived from the tenant's allocation
+// constraints. Current values are computed from the usage store.
 func (p *ShowbackProvider) handleGetSelfQuotas(c echo.Context) error {
+	tenantIDStr := c.Get("tenant_id")
+	if tenantIDStr == nil {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized", "message": "tenant_id not found in auth context"})
+	}
+
+	str, ok := tenantIDStr.(string)
+	if !ok || str == "" {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized", "message": "tenant_id not found in auth context"})
+	}
+
+	tenantID, err := uuid.Parse(str)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid tenant_id"})
+	}
+
+	// Get current usage from store
+	usage := p.store.GetUsageByTenant(tenantID)
+
+	// Build quota info from usage metrics.
+	// Quota limits would come from the tenant's allocation constraints
+	// in production (via compute service interface).
+	quotas := make(map[string]QuotaLimit)
+	for metric, current := range usage.Metrics {
+		unit := "hours"
+		if metric == "storage-gb-hours" {
+			unit = "gb-hours"
+		}
+		quotas[metric] = QuotaLimit{
+			Current: current,
+			Unit:    unit,
+			// Limit would be populated from allocation constraints
+		}
+	}
+
 	info := QuotaInfo{
-		TenantID: uuid.Nil,
-		Quotas: map[string]QuotaLimit{
-			"gpu-hours": {
-				Limit:   1000.0,
-				Current: 120.5,
-				Unit:    "hours",
-			},
-			"storage-gb-hours": {
-				Limit:   10000.0,
-				Current: 2048.0,
-				Unit:    "gb-hours",
-			},
-		},
+		TenantID: tenantID,
+		Quotas:   quotas,
 	}
 	return c.JSON(http.StatusOK, info)
 }

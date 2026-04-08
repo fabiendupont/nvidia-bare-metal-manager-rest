@@ -35,7 +35,7 @@ func TestProviderVersion(t *testing.T) {
 
 func TestProviderFeatures(t *testing.T) {
 	p := New(ProviderConfig{})
-	assert.Equal(t, []string{"fabric", "ib-fabric"}, p.Features())
+	assert.Equal(t, []string{"ansible-fabric", "ib-fabric"}, p.Features())
 }
 
 func TestProviderDependencies(t *testing.T) {

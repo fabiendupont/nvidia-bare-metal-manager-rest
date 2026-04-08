@@ -115,11 +115,7 @@ func TestOrderHandler_Cancel_Found(t *testing.T) {
 
 	err := handler.Cancel(c)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var got Order
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	assert.Equal(t, OrderStatusCancelled, got.Status)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
 
 func TestOrderHandler_Cancel_NotFound(t *testing.T) {
@@ -228,11 +224,7 @@ func TestServiceHandler_Delete_Found(t *testing.T) {
 
 	err := handler.Delete(c)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-
-	var got Service
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	assert.Equal(t, ServiceStatusTerminating, got.Status)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
 
 func TestServiceHandler_Delete_NotFound(t *testing.T) {

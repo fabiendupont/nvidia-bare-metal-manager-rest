@@ -147,21 +147,31 @@ implementations (e.g., Netris instead of carbide-api for networking).
 |----------|----------|-------------|
 | nico-dpfhcp | dpf-hcp | DPU cluster provisioning via DPFHCPProvisioner operator |
 
-## Alternative providers
+## Complementary providers
 
-The architecture supports swapping built-in providers with
-partner implementations. Example:
+The architecture supports providers that add capabilities
+alongside existing features, reacting to events via hooks.
 
-### Netris networking
+### Netris fabric management
 
-`providers/netris-networking/` implements `networkingsvc.Service`
-using the Netris SDN Controller API instead of carbide-api.
+`providers/netris-fabric/` syncs NICo tenant networking events
+to the Netris SDN Controller for physical switch configuration.
+It is **complementary** to nico-networking — Netris manages the
+physical fabric, NICo manages tenant constructs.
 
-- Maps NICo VPC → Netris VPC (VRF)
-- Maps NICo IPBlock → Netris Allocation
-- Maps NICo Subnet → Netris Subnet
+- Reacts to `post-create-vpc` → creates Netris VPC (VRF) on switches
+- Reacts to `post-create-subnet` → creates Netris VNET on switches
+- Validates IPAM via `pre-create-subnet` sync hook
 - Reads credentials from `NETRIS_URL`, `NETRIS_USERNAME`, `NETRIS_PASSWORD`
-- Not registered in any default profile; operators select it via custom profile config
+
+### Ansible fabric automation
+
+`providers/ansible-fabric/` bridges NICo lifecycle events to
+AAP job templates for switch and InfiniBand fabric configuration.
+
+- Uses `nvidia.nvue` collection for Ethernet switch automation
+- Uses `nvidia.ufm` collection for InfiniBand fabric management
+- Hook-driven: reacts to VPC, subnet, instance, IB partition events
 
 ## Creating a new provider
 

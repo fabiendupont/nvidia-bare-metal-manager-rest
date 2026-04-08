@@ -57,7 +57,8 @@ func (s *ProvisioningStore) Get(siteID string) (*ProvisioningRecord, error) {
 	if !ok {
 		return nil, fmt.Errorf("provisioning record for site %s not found", siteID)
 	}
-	return r, nil
+	copy := *r
+	return &copy, nil
 }
 
 // GetBySiteID retrieves a provisioning record by site ID.

@@ -18,17 +18,21 @@
 package fulfillment
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
+	cdbm "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db/model"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
 // TenantProvisioningWorkflow orchestrates the full provisioning sequence
-// when a tenant places an order. Each step is a Temporal activity.
+// when a tenant places an order. Each step is a Temporal activity that
+// calls the appropriate NICo service interface.
 func TenantProvisioningWorkflow(ctx workflow.Context, orderID uuid.UUID) error {
 	logger := log.With().Str("Workflow", "TenantProvisioning").
 		Str("OrderID", orderID.String()).Logger()
@@ -49,6 +53,7 @@ func TenantProvisioningWorkflow(ctx workflow.Context, orderID uuid.UUID) error {
 	ctx = workflow.WithActivityOptions(ctx, options)
 
 	var activities FulfillmentActivities
+	var provisioning ProvisioningActivities
 
 	// Step 1: Validate order and template
 	logger.Info().Msg("validating order")
@@ -76,16 +81,27 @@ func TenantProvisioningWorkflow(ctx workflow.Context, orderID uuid.UUID) error {
 		return err
 	}
 
-	// Step 4: Placeholder: Create VPC (would call networking service)
-	logger.Info().Msg("placeholder: VPC creation would happen here")
+	// Step 4: Create VPC via networking service
+	logger.Info().Msg("provisioning VPC")
+	var vpc cdbm.Vpc
+	siteID := order.TenantID // In production, site ID comes from allocation or order params
+	err = workflow.ExecuteActivity(ctx, provisioning.ProvisionVPC, service.ID, siteID).Get(ctx, &vpc)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to provision VPC")
+		_ = workflow.ExecuteActivity(ctx, activities.UpdateOrderStatus, orderID, OrderStatusFailed, "VPC provisioning failed").Get(ctx, nil)
+		return err
+	}
 
-	// Step 5: Placeholder: Create allocation (would call compute service)
-	logger.Info().Msg("placeholder: compute allocation would happen here")
+	// Step 5: Allocate compute via compute service
+	logger.Info().Msg("provisioning compute")
+	err = workflow.ExecuteActivity(ctx, provisioning.ProvisionCompute, service.ID, siteID).Get(ctx, nil)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to provision compute")
+		_ = workflow.ExecuteActivity(ctx, activities.UpdateOrderStatus, orderID, OrderStatusFailed, "compute provisioning failed").Get(ctx, nil)
+		return err
+	}
 
-	// Step 6: Placeholder: Deploy workload
-	logger.Info().Msg("placeholder: workload deployment would happen here")
-
-	// Step 7: Mark service as Active, order as Ready
+	// Step 6: Mark service as Active, order as Ready
 	logger.Info().Msg("marking service as active")
 	err = workflow.ExecuteActivity(ctx, activities.MarkServiceActive, service.ID).Get(ctx, nil)
 	if err != nil {
@@ -105,8 +121,7 @@ func TenantProvisioningWorkflow(ctx workflow.Context, orderID uuid.UUID) error {
 }
 
 // TenantTeardownWorkflow reverses provisioning by tearing down resources
-// in reverse order: delete workload, delete allocation, delete VPC,
-// then mark the service as terminated.
+// in reverse order via service interfaces, then marks the service as terminated.
 func TenantTeardownWorkflow(ctx workflow.Context, serviceID uuid.UUID) error {
 	logger := log.With().Str("Workflow", "TenantTeardown").
 		Str("ServiceID", serviceID.String()).Logger()
@@ -127,26 +142,40 @@ func TenantTeardownWorkflow(ctx workflow.Context, serviceID uuid.UUID) error {
 	ctx = workflow.WithActivityOptions(ctx, options)
 
 	var activities FulfillmentActivities
+	var provisioning ProvisioningActivities
 
-	// Reverse order: delete workload -> delete allocation -> delete VPC -> mark terminated
-	logger.Info().Msg("placeholder: workload deletion would happen here")
-	logger.Info().Msg("placeholder: compute deallocation would happen here")
-	logger.Info().Msg("placeholder: VPC deletion would happen here")
+	var teardownErrors []string
 
-	// Mark service as terminated
+	// Step 1: Tear down compute resources
+	logger.Info().Msg("tearing down compute resources")
+	if err := workflow.ExecuteActivity(ctx, provisioning.TeardownCompute, serviceID).Get(ctx, nil); err != nil {
+		logger.Warn().Err(err).Msg("failed to tear down compute")
+		teardownErrors = append(teardownErrors, "compute: "+err.Error())
+	}
+
+	// Step 2: Tear down VPC
+	logger.Info().Msg("tearing down VPC")
+	if err := workflow.ExecuteActivity(ctx, provisioning.TeardownVPC, serviceID).Get(ctx, nil); err != nil {
+		logger.Warn().Err(err).Msg("failed to tear down VPC")
+		teardownErrors = append(teardownErrors, "vpc: "+err.Error())
+	}
+
+	// Step 3: Mark service as terminated
 	logger.Info().Msg("marking service as terminated")
-	err := workflow.ExecuteActivity(ctx, activities.MarkServiceTerminated, serviceID).Get(ctx, nil)
-	if err != nil {
+	if err := workflow.ExecuteActivity(ctx, activities.MarkServiceTerminated, serviceID).Get(ctx, nil); err != nil {
 		logger.Warn().Err(err).Msg("failed to mark service as terminated")
 		return err
 	}
 
 	logger.Info().Msg("completing workflow")
+	if len(teardownErrors) > 0 {
+		return fmt.Errorf("teardown completed with errors: %s", strings.Join(teardownErrors, "; "))
+	}
 	return nil
 }
 
-// ServiceScaleWorkflow modifies a running service by updating its
-// resources based on the provided parameters.
+// ServiceScaleWorkflow modifies a running service by adjusting its
+// compute resources via the compute service interface.
 func ServiceScaleWorkflow(ctx workflow.Context, serviceID uuid.UUID, params map[string]interface{}) error {
 	logger := log.With().Str("Workflow", "ServiceScale").
 		Str("ServiceID", serviceID.String()).Logger()
@@ -166,8 +195,15 @@ func ServiceScaleWorkflow(ctx workflow.Context, serviceID uuid.UUID, params map[
 
 	ctx = workflow.WithActivityOptions(ctx, options)
 
-	// Placeholder: scaling activities would be executed here based on params
-	logger.Info().Interface("params", params).Msg("placeholder: service scaling would happen here")
+	var provisioning ProvisioningActivities
+
+	// Scale compute resources based on parameters
+	logger.Info().Interface("params", params).Msg("scaling compute resources")
+	err := workflow.ExecuteActivity(ctx, provisioning.ScaleCompute, serviceID, params).Get(ctx, nil)
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to scale compute")
+		return err
+	}
 
 	logger.Info().Msg("completing workflow")
 	return nil

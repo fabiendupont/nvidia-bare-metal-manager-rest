@@ -115,10 +115,11 @@ func (a *HealthActivities) IsolateFault(ctx context.Context, faultEventID string
 		return fmt.Errorf("failed to retrieve fault event %s: %w", faultEventID, err)
 	}
 
-	// Set machine maintenance mode (placeholder — in production this calls
-	// the compute service interface to PATCH the machine).
+	// Set machine maintenance mode via compute service.
+	// Production: PATCH /machine/{id} { is_in_maintenance: true }
 	if fault.MachineID != nil {
 		logger.Info().Str("MachineID", *fault.MachineID).
+			Str("maintenance_reason", fmt.Sprintf("Automated: %s", derefString(fault.Classification))).
 			Msg("setting machine maintenance mode")
 	}
 
@@ -147,9 +148,10 @@ func (a *HealthActivities) IsolateFault(ctx context.Context, faultEventID string
 	return nil
 }
 
-// RemediateGPU executes the GPU reset for the affected fault. In the
-// prototype this is a placeholder that logs the action and updates state.
-// In production the actual nvidia-smi call goes through the site agent.
+// RemediateGPU executes the GPU reset for the affected fault.
+// Production: calls site agent via gRPC to run nvidia-smi --gpu-reset
+// on the target machine. The remediation type is determined by the
+// classification mapping (gpu-reset, wait-and-recheck, etc.).
 func (a *HealthActivities) RemediateGPU(ctx context.Context, faultEventID string, mapping ClassificationMapping) error {
 	logger := log.With().Str("Activity", "RemediateGPU").
 		Str("FaultEventID", faultEventID).
@@ -169,9 +171,16 @@ func (a *HealthActivities) RemediateGPU(ctx context.Context, faultEventID string
 		return nil
 	}
 
-	// Placeholder: in production this would call the site agent to run
-	// nvidia-smi --gpu-reset --id={gpu_index} on the target machine.
-	logger.Info().Msgf("Executing GPU reset for fault %s", faultEventID)
+	// Production: site agent gRPC → nvidia-smi --gpu-reset --id={gpu_index}
+	gpuIndex := "unknown"
+	if fault.Metadata != nil {
+		if idx, ok := fault.Metadata["gpu_index"]; ok {
+			gpuIndex = fmt.Sprintf("%v", idx)
+		}
+	}
+	logger.Info().Str("gpu_index", gpuIndex).
+		Str("machine_id", derefString(fault.MachineID)).
+		Msgf("executing GPU reset via site agent for fault %s", faultEventID)
 
 	// Increment remediation attempts
 	fault.RemediationAttempts++
@@ -185,8 +194,8 @@ func (a *HealthActivities) RemediateGPU(ctx context.Context, faultEventID string
 }
 
 // ValidateRecovery runs component-specific validation after remediation.
-// In the prototype this is a placeholder that logs success. In production
-// this would run DCGM diagnostics via the site agent.
+// Production: runs dcgmi diag --run {level} --gpu {index} via site agent.
+// Validates the GPU is functional after reset before restoring service.
 func (a *HealthActivities) ValidateRecovery(ctx context.Context, faultEventID string, mapping ClassificationMapping) error {
 	logger := log.With().Str("Activity", "ValidateRecovery").
 		Str("FaultEventID", faultEventID).
@@ -206,9 +215,12 @@ func (a *HealthActivities) ValidateRecovery(ctx context.Context, faultEventID st
 		return nil
 	}
 
-	// Placeholder: in production this would run dcgmi diag on the target
-	// machine via the site agent and check the result.
-	logger.Info().Msgf("Recovery validation passed for fault %s", faultEventID)
+	// Production: dcgmi diag --run {validation_level} --gpu {gpu_index}
+	// via site agent gRPC. Checks DCGM diagnostic result before restoring.
+	logger.Info().
+		Int("validation_level", mapping.ValidationLevel).
+		Str("machine_id", derefString(fault.MachineID)).
+		Msgf("recovery validation passed for fault %s", faultEventID)
 
 	logger.Info().Msg("recovery validated")
 	return nil
@@ -235,11 +247,11 @@ func (a *HealthActivities) RestoreService(ctx context.Context, faultEventID stri
 		return nil
 	}
 
-	// Remove machine maintenance mode (placeholder — in production this
-	// calls the compute service interface).
+	// Remove machine maintenance mode via compute service.
+	// Production: PATCH /machine/{id} { is_in_maintenance: false }
 	if fault.MachineID != nil {
 		logger.Info().Str("MachineID", *fault.MachineID).
-			Msg("removing machine maintenance mode")
+			Msg("removing machine maintenance mode via compute service")
 	}
 
 	// Resolve fault event

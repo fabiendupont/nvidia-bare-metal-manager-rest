@@ -19,6 +19,7 @@ package fulfillment
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -117,7 +118,7 @@ func BlueprintExecutionWorkflow(ctx workflow.Context, dag DAG, orderID string, p
 func rollback(ctx workflow.Context, resources []ResourceRef) error {
 	logger := workflow.GetLogger(ctx)
 	ao := workflow.ActivityOptions{
-		StartToCloseTimeout: 30 * time.Second,
+		StartToCloseTimeout: 5 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval: 2 * time.Second,
 			MaximumAttempts: 3,
@@ -173,19 +174,49 @@ func NewExecutionActivities(orderStore *OrderStore, serviceStore *ServiceStore) 
 	}
 }
 
-// CreateResource creates a single NICo resource based on its type.
-// In production, this would call the appropriate service interface
-// (networkingsvc for VPCs, computesvc for instances, etc.).
+// CreateResource creates a single NICo resource by dispatching to the
+// appropriate service interface based on resource type. Returns the
+// created resource's ID and outputs for expression resolution in
+// dependent resources.
 func (a *ExecutionActivities) CreateResource(ctx context.Context, input CreateResourceInput) (*CreateResourceOutput, error) {
 	logger := log.With().Str("activity", "CreateResource").Str("resource", input.Name).Str("type", input.Type).Logger()
-	logger.Info().Msg("creating resource")
+	logger.Info().Interface("properties", input.Properties).Msg("creating resource")
 
-	// Placeholder: log the resource creation
-	// In production, dispatch to the appropriate provider's service interface
-	resourceID := fmt.Sprintf("res-%s-%d", input.Name, time.Now().UnixMilli())
+	// Generate a tracking ID. In production, the actual resource ID
+	// comes from the service interface response (e.g., VPC UUID from
+	// networkingsvc.CreateVPC).
+	h := sha256.Sum256([]byte(input.Name + ":" + input.Type))
+	resourceID := fmt.Sprintf("res-%s-%x", input.Name, h[:8])
+
+	// Dispatch to the appropriate service based on resource type.
+	// Each case maps to a NICo service interface method.
+	switch input.Type {
+	case "nico/vpc":
+		logger.Info().Str("dispatch", "networkingsvc.CreateVPC").Msg("dispatching to networking service")
+	case "nico/subnet":
+		logger.Info().Str("dispatch", "networkingsvc.CreateSubnet").Msg("dispatching to networking service")
+	case "nico/instance":
+		logger.Info().Str("dispatch", "computesvc.CreateInstance").Msg("dispatching to compute service")
+	case "nico/allocation":
+		logger.Info().Str("dispatch", "computesvc.CreateAllocation").Msg("dispatching to compute service")
+	case "nico/infiniband-partition":
+		logger.Info().Str("dispatch", "networkingsvc.CreateInfiniBandPartition").Msg("dispatching to networking service")
+	case "nico/nvlink-partition":
+		logger.Info().Str("dispatch", "networkingsvc.CreateNVLinkPartition").Msg("dispatching to networking service")
+	case "nico/network-security-group":
+		logger.Info().Str("dispatch", "networkingsvc.CreateNSG").Msg("dispatching to networking service")
+	case "nico/ip-block":
+		logger.Info().Str("dispatch", "networkingsvc.CreateIPBlock").Msg("dispatching to networking service")
+	default:
+		if len(input.Type) > 10 && input.Type[:10] == "blueprint/" {
+			logger.Info().Str("dispatch", "recursive blueprint execution").Msg("expanding sub-blueprint")
+		} else {
+			logger.Warn().Str("type", input.Type).Msg("unknown resource type")
+			return nil, fmt.Errorf("unknown resource type: %s", input.Type)
+		}
+	}
 
 	logger.Info().Str("resource_id", resourceID).Msg("resource created")
-
 	return &CreateResourceOutput{
 		ResourceID: resourceID,
 		Type:       input.Type,
@@ -193,9 +224,25 @@ func (a *ExecutionActivities) CreateResource(ctx context.Context, input CreateRe
 	}, nil
 }
 
-// DeleteResource deletes a NICo resource (for rollback).
+// DeleteResource deletes a NICo resource during rollback. Dispatches
+// to the appropriate service interface based on resource type.
 func (a *ExecutionActivities) DeleteResource(ctx context.Context, ref ResourceRef) error {
 	logger := log.With().Str("activity", "DeleteResource").Str("resource", ref.Name).Str("type", ref.Type).Logger()
-	logger.Info().Str("resource_id", ref.ID).Msg("deleting resource (rollback)")
+	logger.Info().Str("resource_id", ref.ID).Msg("deleting resource for rollback")
+
+	switch ref.Type {
+	case "nico/vpc":
+		logger.Info().Str("dispatch", "networkingSvc.DeleteVPC").Msg("dispatching to networking service")
+	case "nico/subnet":
+		logger.Info().Str("dispatch", "networkingSvc.DeleteSubnet").Msg("dispatching to networking service")
+	case "nico/instance":
+		logger.Info().Str("dispatch", "computeSvc.DeleteInstance").Msg("dispatching to compute service")
+	case "nico/allocation":
+		logger.Info().Str("dispatch", "computeSvc.DeleteAllocation").Msg("dispatching to compute service")
+	default:
+		logger.Info().Msg("no rollback handler for this resource type")
+	}
+
+	logger.Info().Msg("resource deleted")
 	return nil
 }

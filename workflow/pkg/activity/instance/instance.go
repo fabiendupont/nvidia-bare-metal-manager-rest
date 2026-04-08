@@ -320,7 +320,11 @@ func (mi ManageInstance) CreateInstanceViaSiteAgent(ctx context.Context, instanc
 	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site Agent workflow to create Instance")
 
 	// Fire post-create hooks (async — don't block the activity)
-	mi.fireAsync(ctx, "compute", "post-create-instance", instanceID)
+	mi.fireAsync(ctx, "compute", "post-create-instance", map[string]interface{}{
+		"instance_id": instanceID.String(),
+		"site_id":     instance.SiteID.String(),
+		"machine_id":  instance.MachineID,
+	})
 
 	logger.Info().Msg("completed activity")
 
@@ -463,7 +467,11 @@ func (mi ManageInstance) DeleteInstanceViaSiteAgent(ctx context.Context, instanc
 	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site Agent workflow to delete Instance")
 
 	// Fire post-delete hooks (async — notify billing, DCIM, etc.)
-	mi.fireAsync(ctx, "compute", "post-delete-instance", instanceID)
+	mi.fireAsync(ctx, "compute", "post-delete-instance", map[string]interface{}{
+		"instance_id": instanceID.String(),
+		"site_id":     instance.SiteID.String(),
+		"machine_id":  instance.MachineID,
+	})
 
 	logger.Info().Msg("completed activity")
 
