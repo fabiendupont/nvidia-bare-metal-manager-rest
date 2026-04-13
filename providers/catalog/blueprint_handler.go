@@ -70,7 +70,7 @@ func (h *BlueprintHandler) handleCreateBlueprint(c echo.Context) error {
 
 	// Validate based_on reference if provided
 	if b.BasedOn != "" {
-		parent, err := h.store.GetByID(extractBlueprintID(b.BasedOn))
+		parent, err := lookupBlueprint(b.BasedOn, h.store)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "validation_error", "message": "based_on references a blueprint that does not exist"})
 		}
@@ -264,22 +264,22 @@ func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 	currency := "USD"
 
 	for _, res := range b.Resources {
-		if extractBlueprintName(res.Type) != "" {
-			refName := extractBlueprintName(res.Type)
-			refID := extractBlueprintID(refName)
-			child, err := h.store.GetByID(refID)
-			if err != nil {
-				continue
-			}
-			if child.Pricing != nil {
-				totalRate += child.Pricing.Rate
-				unit = child.Pricing.Unit
-				currency = child.Pricing.Currency
-				breakdown = append(breakdown, CostBreakdownItem{
-					Blueprint: child.Name,
-					Rate:      child.Pricing.Rate,
-				})
-			}
+		ref := extractBlueprintRef(res.Type)
+		if ref == "" {
+			continue
+		}
+		child, err := lookupBlueprint(ref, h.store)
+		if err != nil {
+			continue
+		}
+		if child.Pricing != nil {
+			totalRate += child.Pricing.Rate
+			unit = child.Pricing.Unit
+			currency = child.Pricing.Currency
+			breakdown = append(breakdown, CostBreakdownItem{
+				Blueprint: child.Name,
+				Rate:      child.Pricing.Rate,
+			})
 		}
 	}
 
@@ -305,22 +305,43 @@ type CostBreakdownItem struct {
 	Rate      float64 `json:"rate"`
 }
 
-// extractBlueprintName returns the blueprint name from a "blueprint/name" or
-// "blueprint/name@version" resource type. Returns empty string if not a blueprint type.
-func extractBlueprintName(resType string) string {
+// extractBlueprintRef returns the raw reference from a "blueprint/..." resource type.
+// Returns empty string if not a blueprint type.
+func extractBlueprintRef(resType string) string {
 	if len(resType) > 10 && resType[:10] == "blueprint/" {
 		return resType[10:]
 	}
 	return ""
 }
 
-// extractBlueprintID strips version pins like "@1.0.0" from a blueprint reference
-// and returns the name or ID portion.
-func extractBlueprintID(ref string) string {
+// parseRef splits a blueprint reference like "name@1.0.0" or a UUID
+// into its name/ID and optional version parts.
+func parseRef(ref string) (nameOrID, version string) {
 	for i, c := range ref {
 		if c == '@' {
-			return ref[:i]
+			return ref[:i], ref[i+1:]
 		}
 	}
-	return ref
+	return ref, ""
+}
+
+// extractBlueprintID strips version pins like "@1.0.0" from a blueprint reference
+// and returns the name or ID portion. Kept for backward compatibility.
+func extractBlueprintID(ref string) string {
+	id, _ := parseRef(ref)
+	return id
+}
+
+// lookupBlueprint resolves a blueprint reference (from a "blueprint/..." resource type)
+// against the store. Tries by UUID first, then by name+version.
+func lookupBlueprint(ref string, store BlueprintStoreInterface) (*Blueprint, error) {
+	nameOrID, version := parseRef(ref)
+
+	// Try by ID first (works for UUID references)
+	if b, err := store.GetByID(nameOrID); err == nil {
+		return b, nil
+	}
+
+	// Fall back to name+version lookup
+	return store.GetByNameVersion(nameOrID, version)
 }

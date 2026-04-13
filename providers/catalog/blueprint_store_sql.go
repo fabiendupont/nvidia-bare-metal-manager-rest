@@ -32,6 +32,7 @@ import (
 type BlueprintStoreInterface interface {
 	Create(b *Blueprint) error
 	GetByID(id string) (*Blueprint, error)
+	GetByNameVersion(name, version string) (*Blueprint, error)
 	GetAll() []*Blueprint
 	Update(b *Blueprint) error
 	Delete(id string) error
@@ -81,6 +82,18 @@ func (s *BlueprintSQLStore) GetByID(id string) (*Blueprint, error) {
 		return nil, fmt.Errorf("blueprint %s not found", id)
 	}
 
+	return dbModelToBlueprint(dbModel)
+}
+
+// GetByNameVersion retrieves a blueprint by name and optional version.
+func (s *BlueprintSQLStore) GetByNameVersion(name, version string) (*Blueprint, error) {
+	dbModel, err := s.dao.GetByNameVersion(context.Background(), nil, name, version)
+	if err != nil {
+		if version != "" {
+			return nil, fmt.Errorf("blueprint %s@%s not found", name, version)
+		}
+		return nil, fmt.Errorf("blueprint %s not found", name)
+	}
 	return dbModelToBlueprint(dbModel)
 }
 

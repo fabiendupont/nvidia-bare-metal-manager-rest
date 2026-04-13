@@ -40,8 +40,8 @@ func TestOrderHandler_Create(t *testing.T) {
 	handler := NewOrderHandler(store)
 
 	body := `{
-		"template_id": "` + uuid.New().String() + `",
-		"template_name": "gpu-cluster",
+		"blueprint_id": "` + uuid.New().String() + `",
+		"blueprint_name": "gpu-cluster",
 		"tenant_id": "` + uuid.New().String() + `",
 		"parameters": {"nodes": 4}
 	}`
@@ -58,7 +58,7 @@ func TestOrderHandler_Create(t *testing.T) {
 	var order Order
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &order))
 	assert.Equal(t, OrderStatusPending, order.Status)
-	assert.Equal(t, "gpu-cluster", order.TemplateName)
+	assert.Equal(t, "gpu-cluster", order.BlueprintName)
 }
 
 func TestOrderHandler_Get_Found(t *testing.T) {

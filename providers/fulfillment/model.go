@@ -34,11 +34,11 @@ const (
 	OrderStatusCancelled    OrderStatus = "Cancelled"
 )
 
-// Order represents a request to provision a service from a catalog template.
+// Order represents a request to provision a service from a catalog blueprint.
 type Order struct {
 	ID            uuid.UUID              `json:"id"`
-	TemplateID    uuid.UUID              `json:"template_id"`
-	TemplateName  string                 `json:"template_name"`
+	BlueprintID    uuid.UUID              `json:"blueprint_id"`
+	BlueprintName  string                 `json:"blueprint_name"`
 	TenantID      uuid.UUID              `json:"tenant_id"`
 	Parameters    map[string]interface{} `json:"parameters"`
 	Status        OrderStatus            `json:"status"`
@@ -64,8 +64,8 @@ const (
 type Service struct {
 	ID           uuid.UUID         `json:"id"`
 	OrderID      uuid.UUID         `json:"order_id"`
-	TemplateID   uuid.UUID         `json:"template_id"`
-	TemplateName string            `json:"template_name"`
+	BlueprintID   uuid.UUID         `json:"blueprint_id"`
+	BlueprintName string            `json:"blueprint_name"`
 	TenantID     uuid.UUID         `json:"tenant_id"`
 	Name         string            `json:"name"`
 	Status       ServiceStatus     `json:"status"`

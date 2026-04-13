@@ -199,8 +199,8 @@ func (s *ServiceSQLStore) ListByTenant(tenantID uuid.UUID) []*Service {
 func orderToDBModel(o *Order) *model.CatalogOrder {
 	return &model.CatalogOrder{
 		ID:            o.ID,
-		BlueprintID:   o.TemplateID,
-		BlueprintName: o.TemplateName,
+		BlueprintID:   o.BlueprintID,
+		BlueprintName: o.BlueprintName,
 		TenantID:      o.TenantID,
 		Parameters:    o.Parameters,
 		Status:        string(o.Status),
@@ -215,8 +215,8 @@ func orderToDBModel(o *Order) *model.CatalogOrder {
 func dbModelToOrder(m *model.CatalogOrder) *Order {
 	return &Order{
 		ID:            m.ID,
-		TemplateID:    m.BlueprintID,
-		TemplateName:  m.BlueprintName,
+		BlueprintID:    m.BlueprintID,
+		BlueprintName:  m.BlueprintName,
 		TenantID:      m.TenantID,
 		Parameters:    m.Parameters,
 		Status:        OrderStatus(m.Status),
@@ -232,8 +232,8 @@ func serviceToDBModel(s *Service) *model.CatalogService {
 	return &model.CatalogService{
 		ID:            s.ID,
 		OrderID:       s.OrderID,
-		BlueprintID:   s.TemplateID,
-		BlueprintName: s.TemplateName,
+		BlueprintID:   s.BlueprintID,
+		BlueprintName: s.BlueprintName,
 		TenantID:      s.TenantID,
 		Name:          s.Name,
 		Status:        string(s.Status),
@@ -247,8 +247,8 @@ func dbModelToService(m *model.CatalogService) *Service {
 	return &Service{
 		ID:           m.ID,
 		OrderID:      m.OrderID,
-		TemplateID:   m.BlueprintID,
-		TemplateName: m.BlueprintName,
+		BlueprintID:   m.BlueprintID,
+		BlueprintName: m.BlueprintName,
 		TenantID:     m.TenantID,
 		Name:         m.Name,
 		Status:       ServiceStatus(m.Status),

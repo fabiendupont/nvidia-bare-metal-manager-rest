@@ -71,6 +71,8 @@ type BlueprintDAO interface {
 	//
 	GetByID(ctx context.Context, tx *db.Tx, id uuid.UUID) (*Blueprint, error)
 	//
+	GetByNameVersion(ctx context.Context, tx *db.Tx, name, version string) (*Blueprint, error)
+	//
 	GetAll(ctx context.Context, tx *db.Tx, tenantID *uuid.UUID, visibility *string, isActive *bool) ([]Blueprint, error)
 	//
 	Update(ctx context.Context, tx *db.Tx, b *Blueprint) (*Blueprint, error)
@@ -114,6 +116,35 @@ func (d BlueprintSQLDAO) GetByID(ctx context.Context, tx *db.Tx, id uuid.UUID) (
 
 	b := &Blueprint{}
 	err := db.GetIDB(tx, d.dbSession).NewSelect().Model(b).Where("bp.id = ?", id).Scan(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, db.ErrDoesNotExist
+		}
+		return nil, err
+	}
+	return b, nil
+}
+
+// GetByNameVersion returns a Blueprint by name and optional version.
+// If version is empty, returns the most recently updated active match.
+func (d BlueprintSQLDAO) GetByNameVersion(ctx context.Context, tx *db.Tx, name, version string) (*Blueprint, error) {
+	ctx, span := d.tracerSpan.CreateChildInCurrentContext(ctx, "BlueprintDAO.GetByNameVersion")
+	if span != nil {
+		defer span.End()
+		d.tracerSpan.SetAttribute(span, "blueprint_name", name)
+		d.tracerSpan.SetAttribute(span, "blueprint_version", version)
+	}
+
+	b := &Blueprint{}
+	query := db.GetIDB(tx, d.dbSession).NewSelect().Model(b).
+		Where("bp.name = ?", name).
+		Where("bp.is_active = ?", true)
+	if version != "" {
+		query = query.Where("bp.version = ?", version)
+	}
+	query = query.Order("bp.updated DESC").Limit(1)
+
+	err := query.Scan(ctx)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, db.ErrDoesNotExist

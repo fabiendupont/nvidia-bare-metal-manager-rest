@@ -20,6 +20,7 @@ package fulfillment
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	echo "github.com/labstack/echo/v4"
 )
 
@@ -28,6 +29,15 @@ func (p *FulfillmentProvider) RegisterRoutes(group *echo.Group) {
 	prefix := p.apiPathPrefix
 
 	orderHandler := NewOrderHandler(p.orderStore)
+	if p.catalog != nil {
+		orderHandler.WithBlueprintValidator(func(id uuid.UUID) (string, error) {
+			bp, err := p.catalog.BlueprintStore().GetByID(id.String())
+			if err != nil {
+				return "", err
+			}
+			return bp.Name, nil
+		})
+	}
 	serviceHandler := NewServiceHandler(p.serviceStore)
 
 	// Order endpoints

@@ -39,15 +39,16 @@ func ResolveBlueprint(b *Blueprint, store BlueprintStoreInterface) (*Blueprint, 
 		if current.BasedOn == "" {
 			break
 		}
-		parentID := extractBlueprintID(current.BasedOn)
-		if seen[parentID] {
-			return nil, fmt.Errorf("circular based_on chain detected at blueprint %s", parentID)
+		parentRef := current.BasedOn
+		parentKey := extractBlueprintID(parentRef)
+		if seen[parentKey] {
+			return nil, fmt.Errorf("circular based_on chain detected at blueprint %s", parentKey)
 		}
-		parent, err := store.GetByID(parentID)
+		parent, err := lookupBlueprint(parentRef, store)
 		if err != nil {
-			return nil, fmt.Errorf("parent blueprint %s not found", parentID)
+			return nil, fmt.Errorf("parent blueprint %s not found", parentRef)
 		}
-		seen[parentID] = true
+		seen[parent.ID] = true
 		chain = append(chain, parent)
 		current = parent
 	}

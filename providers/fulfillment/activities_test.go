@@ -43,7 +43,7 @@ func TestValidateOrder_Success(t *testing.T) {
 	got, err := a.ValidateOrder(context.Background(), order.ID)
 	require.NoError(t, err)
 	assert.Equal(t, order.ID, got.ID)
-	assert.Equal(t, order.TemplateName, got.TemplateName)
+	assert.Equal(t, order.BlueprintName, got.BlueprintName)
 }
 
 func TestValidateOrder_NotFound(t *testing.T) {

@@ -23,27 +23,17 @@ import (
 	echo "github.com/labstack/echo/v4"
 )
 
-// RegisterRoutes registers all catalog template endpoints on the given Echo group.
+// RegisterRoutes registers all catalog blueprint endpoints on the given Echo group.
 func (p *CatalogProvider) RegisterRoutes(group *echo.Group) {
-	prefix := p.apiPathPrefix + "/catalog/templates"
+	bp := p.apiPathPrefix + "/catalog/blueprints"
 
-	group.Add(http.MethodPost, prefix, handleCreateTemplate(p.store))
-	group.Add(http.MethodGet, prefix, handleListTemplates(p.store))
-	group.Add(http.MethodGet, prefix+"/:id", handleGetTemplate(p.store))
-	group.Add(http.MethodPatch, prefix+"/:id", handleUpdateTemplate(p.store))
-	group.Add(http.MethodDelete, prefix+"/:id", handleDeleteTemplate(p.store))
-
-	// Blueprint endpoints (composable service definitions)
-	if p.blueprintHandler != nil {
-		bp := p.apiPathPrefix + "/catalog/blueprints"
-		group.Add(http.MethodPost, bp, p.blueprintHandler.handleCreateBlueprint)
-		group.Add(http.MethodGet, bp, p.blueprintHandler.handleListBlueprints)
-		group.Add(http.MethodGet, bp+"/:id", p.blueprintHandler.handleGetBlueprint)
-		group.Add(http.MethodPatch, bp+"/:id", p.blueprintHandler.handleUpdateBlueprint)
-		group.Add(http.MethodDelete, bp+"/:id", p.blueprintHandler.handleDeleteBlueprint)
-		group.Add(http.MethodPost, bp+"/:id/validate", p.blueprintHandler.handleValidateBlueprint)
-		group.Add(http.MethodPost, bp+"/:id/estimate", p.blueprintHandler.handleEstimateCost)
-		group.Add(http.MethodGet, bp+"/:id/resolved", p.blueprintHandler.handleResolvedBlueprint)
-		group.Add(http.MethodGet, p.apiPathPrefix+"/catalog/resource-types", p.blueprintHandler.handleListResourceTypes)
-	}
+	group.Add(http.MethodPost, bp, p.blueprintHandler.handleCreateBlueprint)
+	group.Add(http.MethodGet, bp, p.blueprintHandler.handleListBlueprints)
+	group.Add(http.MethodGet, bp+"/:id", p.blueprintHandler.handleGetBlueprint)
+	group.Add(http.MethodPatch, bp+"/:id", p.blueprintHandler.handleUpdateBlueprint)
+	group.Add(http.MethodDelete, bp+"/:id", p.blueprintHandler.handleDeleteBlueprint)
+	group.Add(http.MethodPost, bp+"/:id/validate", p.blueprintHandler.handleValidateBlueprint)
+	group.Add(http.MethodPost, bp+"/:id/estimate", p.blueprintHandler.handleEstimateCost)
+	group.Add(http.MethodGet, bp+"/:id/resolved", p.blueprintHandler.handleResolvedBlueprint)
+	group.Add(http.MethodGet, p.apiPathPrefix+"/catalog/resource-types", p.blueprintHandler.handleListResourceTypes)
 }

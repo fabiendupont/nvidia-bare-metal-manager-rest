@@ -23,6 +23,7 @@ import (
 
 	cdb "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db"
 	"github.com/NVIDIA/ncx-infra-controller-rest/provider"
+	"github.com/NVIDIA/ncx-infra-controller-rest/providers/catalog"
 	"github.com/NVIDIA/ncx-infra-controller-rest/providers/compute"
 	"github.com/NVIDIA/ncx-infra-controller-rest/providers/networking"
 )
@@ -35,6 +36,7 @@ type FulfillmentProvider struct {
 	apiPathPrefix string
 	networking    *networking.NetworkingProvider
 	compute       *compute.ComputeProvider
+	catalog       *catalog.CatalogProvider
 }
 
 // New creates a new FulfillmentProvider.
@@ -77,6 +79,14 @@ func (p *FulfillmentProvider) Init(ctx provider.ProviderContext) error {
 				return fmt.Errorf("nico-compute provider has unexpected type")
 			}
 			p.compute = compProvider
+		}
+
+		if cat, ok := ctx.Registry.Get("nico-catalog"); ok {
+			catProvider, ok := cat.(*catalog.CatalogProvider)
+			if !ok {
+				return fmt.Errorf("nico-catalog provider has unexpected type")
+			}
+			p.catalog = catProvider
 		}
 	}
 
