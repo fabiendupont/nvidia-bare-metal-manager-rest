@@ -26,7 +26,6 @@ import (
 
 // CatalogProvider implements the service catalog feature provider.
 type CatalogProvider struct {
-	store            *TemplateStore
 	blueprintStore   BlueprintStoreInterface
 	blueprintHandler *BlueprintHandler
 	dbSession        *cdb.Session
@@ -46,9 +45,6 @@ func (p *CatalogProvider) Dependencies() []string  { return []string{} }
 func (p *CatalogProvider) Init(ctx provider.ProviderContext) error {
 	p.apiPathPrefix = ctx.APIPathPrefix
 
-	// Template store remains in-memory (deprecated, will be removed)
-	p.store = NewTemplateStore()
-
 	// Blueprint store: use PostgreSQL if DB is available, else in-memory
 	if ctx.DB != nil {
 		p.dbSession = ctx.DB
@@ -58,6 +54,7 @@ func (p *CatalogProvider) Init(ctx provider.ProviderContext) error {
 	}
 
 	p.blueprintHandler = NewBlueprintHandler(p.blueprintStore)
+	p.LoadSeedData()
 	return nil
 }
 

@@ -65,6 +65,28 @@ func (s *BlueprintStore) GetByID(id string) (*Blueprint, error) {
 	return &copy, nil
 }
 
+// GetByNameVersion finds a blueprint by name and version.
+// If version is empty, returns the first active match by name.
+func (s *BlueprintStore) GetByNameVersion(name, version string) (*Blueprint, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, b := range s.blueprints {
+		if !b.IsActive {
+			continue
+		}
+		if b.Name == name {
+			if version == "" || b.Version == version {
+				copy := *b
+				return &copy, nil
+			}
+		}
+	}
+	if version != "" {
+		return nil, fmt.Errorf("blueprint %s@%s not found", name, version)
+	}
+	return nil, fmt.Errorf("blueprint %s not found", name)
+}
+
 func (s *BlueprintStore) GetAll() []*Blueprint {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

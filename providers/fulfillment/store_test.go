@@ -29,8 +29,8 @@ import (
 func newTestOrder() *Order {
 	return &Order{
 		ID:           uuid.New(),
-		TemplateID:   uuid.New(),
-		TemplateName: "test-template",
+		BlueprintID:   uuid.New(),
+		BlueprintName: "test-template",
 		TenantID:     uuid.New(),
 		Parameters:   map[string]interface{}{"key": "value"},
 		Status:       OrderStatusPending,
@@ -43,8 +43,8 @@ func newTestService(tenantID uuid.UUID) *Service {
 	return &Service{
 		ID:           uuid.New(),
 		OrderID:      uuid.New(),
-		TemplateID:   uuid.New(),
-		TemplateName: "test-template",
+		BlueprintID:   uuid.New(),
+		BlueprintName: "test-template",
 		TenantID:     tenantID,
 		Name:         "test-service",
 		Status:       ServiceStatusProvisioning,
@@ -76,7 +76,7 @@ func TestOrderStore_Get(t *testing.T) {
 	got, err := store.Get(order.ID)
 	require.NoError(t, err)
 	assert.Equal(t, order.ID, got.ID)
-	assert.Equal(t, order.TemplateName, got.TemplateName)
+	assert.Equal(t, order.BlueprintName, got.BlueprintName)
 
 	// Get a non-existent order.
 	_, err = store.Get(uuid.New())

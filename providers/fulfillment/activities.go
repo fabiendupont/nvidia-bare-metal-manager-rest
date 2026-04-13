@@ -89,8 +89,8 @@ func (a *FulfillmentActivities) CreateService(ctx context.Context, order *Order)
 	service := &Service{
 		ID:           uuid.New(),
 		OrderID:      order.ID,
-		TemplateID:   order.TemplateID,
-		TemplateName: order.TemplateName,
+		BlueprintID:   order.BlueprintID,
+		BlueprintName: order.BlueprintName,
 		TenantID:     order.TenantID,
 		Name:         fmt.Sprintf("svc-%s", order.ID),
 		Status:       ServiceStatusProvisioning,

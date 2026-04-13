@@ -320,6 +320,118 @@ func TestHandleEstimateCost_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
+func TestHandleEstimateCost_ByNameReference(t *testing.T) {
+	h, store := newTestHandler()
+
+	gpu := &Blueprint{
+		Name: "gpu-slice", Version: "1.0.0",
+		Resources: map[string]BlueprintResource{"i": {Type: "nico/instance"}},
+		Pricing:   &PricingSpec{Rate: 10.0, Unit: "hour", Currency: "USD"},
+	}
+	require.NoError(t, store.Create(gpu))
+
+	// Compose using name reference instead of UUID
+	composed := &Blueprint{
+		Name: "workstation", Version: "1.0.0",
+		Resources: map[string]BlueprintResource{
+			"gpu": {Type: "blueprint/gpu-slice"},
+		},
+	}
+	require.NoError(t, store.Create(composed))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/blueprints/"+composed.ID+"/estimate", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(composed.ID)
+
+	err := h.handleEstimateCost(c)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	var est CostEstimate
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &est))
+	assert.Equal(t, 10.0, est.EstimatedRate)
+	assert.Len(t, est.Breakdown, 1)
+	assert.Equal(t, "gpu-slice", est.Breakdown[0].Blueprint)
+}
+
+func TestHandleEstimateCost_ByNameVersionPin(t *testing.T) {
+	h, store := newTestHandler()
+
+	// Create two versions of the same blueprint
+	v1 := &Blueprint{
+		Name: "gpu-slice", Version: "1.0.0",
+		Resources: map[string]BlueprintResource{"i": {Type: "nico/instance"}},
+		Pricing:   &PricingSpec{Rate: 10.0, Unit: "hour", Currency: "USD"},
+	}
+	v2 := &Blueprint{
+		Name: "gpu-slice", Version: "2.0.0",
+		Resources: map[string]BlueprintResource{"i": {Type: "nico/instance"}},
+		Pricing:   &PricingSpec{Rate: 15.0, Unit: "hour", Currency: "USD"},
+	}
+	require.NoError(t, store.Create(v1))
+	require.NoError(t, store.Create(v2))
+
+	// Pin to v1
+	composed := &Blueprint{
+		Name: "workstation-pinned", Version: "1.0.0",
+		Resources: map[string]BlueprintResource{
+			"gpu": {Type: "blueprint/gpu-slice@1.0.0"},
+		},
+	}
+	require.NoError(t, store.Create(composed))
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/blueprints/"+composed.ID+"/estimate", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(composed.ID)
+
+	err := h.handleEstimateCost(c)
+	require.NoError(t, err)
+
+	var est CostEstimate
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &est))
+	assert.Equal(t, 10.0, est.EstimatedRate) // v1 at $10, not v2 at $15
+}
+
+func TestGetByNameVersion(t *testing.T) {
+	store := NewBlueprintStore()
+
+	v1 := &Blueprint{Name: "gpu", Version: "1.0.0"}
+	v2 := &Blueprint{Name: "gpu", Version: "2.0.0"}
+	other := &Blueprint{Name: "storage", Version: "1.0.0"}
+	require.NoError(t, store.Create(v1))
+	require.NoError(t, store.Create(v2))
+	require.NoError(t, store.Create(other))
+
+	// Exact version
+	b, err := store.GetByNameVersion("gpu", "1.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, "1.0.0", b.Version)
+
+	// Different version
+	b, err = store.GetByNameVersion("gpu", "2.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, "2.0.0", b.Version)
+
+	// No version — returns first match
+	b, err = store.GetByNameVersion("gpu", "")
+	require.NoError(t, err)
+	assert.Equal(t, "gpu", b.Name)
+
+	// Not found
+	_, err = store.GetByNameVersion("nonexistent", "1.0.0")
+	assert.Error(t, err)
+
+	// Wrong version
+	_, err = store.GetByNameVersion("gpu", "3.0.0")
+	assert.Error(t, err)
+}
+
 func TestSeedBlueprints_LoadsData(t *testing.T) {
 	store := NewBlueprintStore()
 	p := &CatalogProvider{blueprintStore: store}

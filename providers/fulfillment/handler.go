@@ -29,8 +29,8 @@ import (
 
 // createOrderRequest is the payload for placing a new order.
 type createOrderRequest struct {
-	TemplateID   uuid.UUID              `json:"template_id"`
-	TemplateName string                 `json:"template_name"`
+	BlueprintID   uuid.UUID              `json:"blueprint_id"`
+	BlueprintName string                 `json:"blueprint_name"`
 	TenantID     uuid.UUID              `json:"tenant_id"`
 	Parameters   map[string]interface{} `json:"parameters"`
 }
@@ -41,14 +41,25 @@ type updateServiceRequest struct {
 	Resources map[string]string `json:"resources,omitempty"`
 }
 
+// BlueprintValidator checks whether a blueprint ID exists.
+// Returns the blueprint name if found, or an error.
+type BlueprintValidator func(id uuid.UUID) (name string, err error)
+
 // OrderHandler handles order-related HTTP requests.
 type OrderHandler struct {
-	orders OrderStoreInterface
+	orders            OrderStoreInterface
+	validateBlueprint BlueprintValidator
 }
 
 // NewOrderHandler creates a new OrderHandler.
 func NewOrderHandler(orders OrderStoreInterface) *OrderHandler {
 	return &OrderHandler{orders: orders}
+}
+
+// WithBlueprintValidator sets the blueprint validation function.
+func (h *OrderHandler) WithBlueprintValidator(v BlueprintValidator) *OrderHandler {
+	h.validateBlueprint = v
+	return h
 }
 
 // Create handles POST requests to place a new order.
@@ -58,18 +69,29 @@ func (h *OrderHandler) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": err.Error()})
 	}
 
-	if req.TemplateID == uuid.Nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "template_id is required"})
+	if req.BlueprintID == uuid.Nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "blueprint_id is required"})
 	}
 	if req.TenantID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "tenant_id is required"})
 	}
 
+	// Validate that the referenced blueprint exists
+	if h.validateBlueprint != nil {
+		name, err := h.validateBlueprint(req.BlueprintID)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "blueprint not found"})
+		}
+		if req.BlueprintName == "" {
+			req.BlueprintName = name
+		}
+	}
+
 	now := time.Now().UTC()
 	order := &Order{
 		ID:           uuid.New(),
-		TemplateID:   req.TemplateID,
-		TemplateName: req.TemplateName,
+		BlueprintID:   req.BlueprintID,
+		BlueprintName: req.BlueprintName,
 		TenantID:     req.TenantID,
 		Parameters:   req.Parameters,
 		Status:       OrderStatusPending,
