@@ -42,6 +42,12 @@ func init() {
 		_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_blueprint_is_active ON blueprint (is_active)")
 		handleError(tx, err)
 
+		_, err = tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_blueprint_name_version ON blueprint (name, version) WHERE deleted IS NULL")
+		handleError(tx, err)
+
+		_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_usage_record_active ON usage_record (resource_id) WHERE end_time IS NULL")
+		handleError(tx, err)
+
 		_, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_catalog_order_tenant_id ON catalog_order (tenant_id)")
 		handleError(tx, err)
 

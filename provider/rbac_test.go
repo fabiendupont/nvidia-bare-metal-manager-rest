@@ -66,17 +66,30 @@ func TestRequireRole_Denied(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
-func TestRequireRole_NoUser_PassThrough(t *testing.T) {
+func TestRequireRole_NoUser_DevMode_PassThrough(t *testing.T) {
+	t.Setenv("NICO_AUTH_MODE", "dev")
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	// No user set — dev/test mode
 
 	handler := withTestRole(RoleProviderAdmin)
 	err := handler(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestRequireRole_NoUser_ProductionMode_Returns401(t *testing.T) {
+	t.Setenv("NICO_AUTH_MODE", "")
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	handler := withTestRole(RoleProviderAdmin)
+	err := handler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
 func TestRequireRole_WrongOrg(t *testing.T) {

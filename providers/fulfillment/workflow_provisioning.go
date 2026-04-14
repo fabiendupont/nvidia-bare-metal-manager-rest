@@ -84,7 +84,9 @@ func TenantProvisioningWorkflow(ctx workflow.Context, orderID uuid.UUID) error {
 	// Step 4: Create VPC via networking service
 	logger.Info().Msg("provisioning VPC")
 	var vpc cdbm.Vpc
-	siteID := order.TenantID // In production, site ID comes from allocation or order params
+	// TODO: Site ID should come from order parameters or allocation constraints, not tenant ID.
+	// This is a known placeholder — tenant and site are different concepts.
+	siteID := order.TenantID
 	err = workflow.ExecuteActivity(ctx, provisioning.ProvisionVPC, service.ID, siteID).Get(ctx, &vpc)
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to provision VPC")

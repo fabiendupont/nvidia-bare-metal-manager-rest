@@ -216,7 +216,7 @@ func EvaluateCondition(condition string, params map[string]interface{}) bool {
 	if len(parts) == 3 {
 		left, err := resolveOperand(parts[0], params)
 		if err != nil {
-			return true // default to true if we can't evaluate
+			return false // default to false if we can't evaluate — don't create resources on error
 		}
 		right, err := resolveOperand(parts[2], params)
 		if err != nil {

@@ -40,7 +40,7 @@ func ResolveBlueprint(b *Blueprint, store BlueprintStoreInterface) (*Blueprint, 
 			break
 		}
 		parentRef := current.BasedOn
-		parentKey := extractBlueprintID(parentRef)
+		parentKey, _ := parseRef(parentRef)
 		if seen[parentKey] {
 			return nil, fmt.Errorf("circular based_on chain detected at blueprint %s", parentKey)
 		}

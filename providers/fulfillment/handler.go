@@ -66,7 +66,7 @@ func (h *OrderHandler) WithBlueprintValidator(v BlueprintValidator) *OrderHandle
 func (h *OrderHandler) Create(c echo.Context) error {
 	var req createOrderRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": err.Error()})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "bad_request", "message": "failed to parse request body"})
 	}
 
 	if req.BlueprintID == uuid.Nil {
@@ -100,10 +100,19 @@ func (h *OrderHandler) Create(c echo.Context) error {
 	}
 
 	if err := h.orders.Create(order); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": "an internal error occurred"})
 	}
 
 	return c.JSON(http.StatusCreated, order)
+}
+
+// callerTenantID extracts the caller's tenant_id from auth context.
+// Returns empty string if not set (dev mode).
+func callerTenantID(c echo.Context) string {
+	if s, ok := c.Get("tenant_id").(string); ok {
+		return s
+	}
+	return ""
 }
 
 // Get handles GET requests to retrieve an order by ID.
@@ -116,6 +125,11 @@ func (h *OrderHandler) Get(c echo.Context) error {
 	order, err := h.orders.Get(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
+	}
+
+	// Tenant isolation: caller can only see their own orders
+	if tid := callerTenantID(c); tid != "" && order.TenantID.String() != tid {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": "order not found"})
 	}
 
 	return c.JSON(http.StatusOK, order)
@@ -179,10 +193,14 @@ func (h *OrderHandler) Cancel(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
+	if tid := callerTenantID(c); tid != "" && order.TenantID.String() != tid {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": "order not found"})
+	}
+
 	order.Status = OrderStatusCancelled
 	order.Updated = time.Now().UTC()
 	if err := h.orders.Update(order); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": "an internal error occurred"})
 	}
 
 	return c.NoContent(http.StatusNoContent)
@@ -201,14 +219,35 @@ func NewServiceHandler(services ServiceStoreInterface) *ServiceHandler {
 // List handles GET requests to list active services for a tenant.
 func (h *ServiceHandler) List(c echo.Context) error {
 	tenantParam := c.QueryParam("tenant_id")
+	var services []*Service
 	if tenantParam != "" {
 		tenantID, err := uuid.Parse(tenantParam)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_id", "message": "invalid tenant_id"})
 		}
-		return c.JSON(http.StatusOK, h.services.ListByTenant(tenantID))
+		services = h.services.ListByTenant(tenantID)
+	} else {
+		services = h.services.List()
 	}
-	return c.JSON(http.StatusOK, h.services.List())
+
+	if services == nil {
+		services = []*Service{}
+	}
+
+	offset, limit := provider.ParsePagination(c)
+	total := len(services)
+	start, end := provider.Paginate(total, offset, limit)
+	page := services[start:end]
+	if page == nil {
+		page = []*Service{}
+	}
+
+	return c.JSON(http.StatusOK, provider.ListResponse{
+		Items:  page,
+		Total:  total,
+		Offset: offset,
+		Limit:  limit,
+	})
 }
 
 // Get handles GET requests to retrieve a service by ID.
@@ -221,6 +260,10 @@ func (h *ServiceHandler) Get(c echo.Context) error {
 	svc, err := h.services.Get(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
+	}
+
+	if tid := callerTenantID(c); tid != "" && svc.TenantID.String() != tid {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": "service not found"})
 	}
 
 	return c.JSON(http.StatusOK, svc)
@@ -236,6 +279,10 @@ func (h *ServiceHandler) Update(c echo.Context) error {
 	svc, err := h.services.Get(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
+	}
+
+	if tid := callerTenantID(c); tid != "" && svc.TenantID.String() != tid {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": "service not found"})
 	}
 
 	var req updateServiceRequest
@@ -258,7 +305,7 @@ func (h *ServiceHandler) Update(c echo.Context) error {
 	svc.Status = ServiceStatusUpdating
 	svc.Updated = time.Now().UTC()
 	if err := h.services.Update(svc); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": "an internal error occurred"})
 	}
 
 	return c.JSON(http.StatusOK, svc)
@@ -276,10 +323,14 @@ func (h *ServiceHandler) Delete(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
+	if tid := callerTenantID(c); tid != "" && svc.TenantID.String() != tid {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": "service not found"})
+	}
+
 	svc.Status = ServiceStatusTerminating
 	svc.Updated = time.Now().UTC()
 	if err := h.services.Update(svc); err != nil {
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": err.Error()})
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "internal_error", "message": "an internal error occurred"})
 	}
 
 	return c.NoContent(http.StatusNoContent)
