@@ -19,19 +19,25 @@ package provider
 
 import (
 	"net/http"
+	"os"
 
 	cdbm "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db/model"
 	echo "github.com/labstack/echo/v4"
 )
 
 const (
-	RoleProviderAdmin  = "FORGE_PROVIDER_ADMIN"
-	RoleTenantAdmin    = "FORGE_TENANT_ADMIN"
+	RoleProviderAdmin   = "FORGE_PROVIDER_ADMIN"
+	RoleTenantAdmin     = "FORGE_TENANT_ADMIN"
 	RoleBlueprintAuthor = "BLUEPRINT_AUTHOR"
 )
 
+// allowAnonymous returns true only when NICO_AUTH_MODE=dev is explicitly set.
+// In production (default), a missing user always results in 401.
+func allowAnonymous() bool {
+	return os.Getenv("NICO_AUTH_MODE") == "dev"
+}
+
 // GetUser extracts the authenticated user from the echo context.
-// Returns nil if no user is set (e.g., in tests without auth middleware).
 func GetUser(c echo.Context) *cdbm.User {
 	u, _ := c.Get("user").(*cdbm.User)
 	return u
@@ -43,16 +49,24 @@ func GetOrgName(c echo.Context) string {
 	return org
 }
 
+// GetTenantID extracts the tenant_id string from the echo context.
+func GetTenantID(c echo.Context) string {
+	tid, _ := c.Get("tenant_id").(string)
+	return tid
+}
+
 // RequireRole returns an echo middleware that checks the user has one of
-// the specified roles for the current org. If no user is in the context
-// (e.g., tests without auth), the request passes through.
+// the specified roles for the current org. Returns 401 if no user is set,
+// unless NICO_AUTH_MODE=dev.
 func RequireRole(roles ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user := GetUser(c)
 			if user == nil {
-				// No auth middleware configured — pass through (dev/test mode)
-				return next(c)
+				if allowAnonymous() {
+					return next(c)
+				}
+				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized", "message": "authentication required"})
 			}
 
 			org := GetOrgName(c)
@@ -81,15 +95,18 @@ func RequireRole(roles ...string) echo.MiddlewareFunc {
 	}
 }
 
-// RequireAuth returns an echo middleware that checks a user is authenticated.
-// Passes through if no auth middleware is configured (dev/test mode).
+// RequireAuth returns an echo middleware that checks a user is authenticated
+// and is a member of the current org. Returns 401 if no user is set,
+// unless NICO_AUTH_MODE=dev.
 func RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user := GetUser(c)
 			if user == nil {
-				// No auth middleware — pass through
-				return next(c)
+				if allowAnonymous() {
+					return next(c)
+				}
+				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "unauthorized", "message": "authentication required"})
 			}
 
 			org := GetOrgName(c)

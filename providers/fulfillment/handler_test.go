@@ -277,9 +277,9 @@ func TestServiceHandler_List(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
-	var services []*Service
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &services))
-	assert.Len(t, services, 2)
+	var resp provider.ListResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, 2, resp.Total)
 }
 
 func TestServiceHandler_Get_Found(t *testing.T) {

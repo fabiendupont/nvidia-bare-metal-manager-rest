@@ -20,18 +20,25 @@ package showback
 import (
 	"net/http"
 
+	"github.com/NVIDIA/ncx-infra-controller-rest/provider"
 	echo "github.com/labstack/echo/v4"
 )
+
+// withAuth wraps a handler with authentication check.
+func withAuth(handler echo.HandlerFunc) echo.HandlerFunc {
+	mw := provider.RequireAuth()
+	return mw(handler)
+}
 
 // RegisterRoutes registers all showback-related API routes.
 func (p *ShowbackProvider) RegisterRoutes(group *echo.Group) {
 	prefix := p.apiPathPrefix
 
-	// Service usage
-	group.Add(http.MethodGet, prefix+"/services/:id/usage", p.handleGetServiceUsage)
+	// Service usage — requires authentication
+	group.Add(http.MethodGet, prefix+"/services/:id/usage", withAuth(p.handleGetServiceUsage))
 
 	// Tenant self-service usage and quotas
-	group.Add(http.MethodGet, prefix+"/self/usage", p.handleGetSelfUsage)
-	group.Add(http.MethodGet, prefix+"/self/usage/costs", p.handleGetSelfUsageCosts)
-	group.Add(http.MethodGet, prefix+"/self/quotas", p.handleGetSelfQuotas)
+	group.Add(http.MethodGet, prefix+"/self/usage", withAuth(p.handleGetSelfUsage))
+	group.Add(http.MethodGet, prefix+"/self/usage/costs", withAuth(p.handleGetSelfUsageCosts))
+	group.Add(http.MethodGet, prefix+"/self/quotas", withAuth(p.handleGetSelfQuotas))
 }

@@ -36,12 +36,13 @@ type UsageStoreInterface interface {
 
 // UsageSQLStore is a PostgreSQL-backed usage store.
 type UsageSQLStore struct {
-	dao model.UsageRecordDAO
+	dbSession *cdb.Session
+	dao       model.UsageRecordDAO
 }
 
 // NewUsageSQLStore creates a new SQL-backed usage store.
 func NewUsageSQLStore(dbSession *cdb.Session) *UsageSQLStore {
-	return &UsageSQLStore{dao: model.NewUsageRecordDAO(dbSession)}
+	return &UsageSQLStore{dbSession: dbSession, dao: model.NewUsageRecordDAO(dbSession)}
 }
 
 // StartMetering creates an open-ended usage record for the given resource.
@@ -58,8 +59,37 @@ func (s *UsageSQLStore) StartMetering(tenantID, resourceID uuid.UUID, metricName
 }
 
 // StopMetering closes the active usage record for the given resource.
+// Uses a transaction to prevent read-then-update races.
 func (s *UsageSQLStore) StopMetering(resourceID uuid.UUID) error {
-	record, err := s.dao.GetByResourceID(context.Background(), nil, resourceID)
+	ctx := context.Background()
+
+	tx, err := cdb.BeginTx(ctx, s.dbSession, nil)
+	if err != nil {
+		// Fall back to non-transactional if BeginTx fails (e.g., no DB)
+		return s.stopMeteringNoTx(ctx, resourceID)
+	}
+
+	record, err := s.dao.GetByResourceID(ctx, tx, resourceID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	now := time.Now()
+	record.EndTime = &now
+	record.Value = now.Sub(record.StartTime).Hours()
+
+	_, err = s.dao.Update(ctx, tx, record)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (s *UsageSQLStore) stopMeteringNoTx(ctx context.Context, resourceID uuid.UUID) error {
+	record, err := s.dao.GetByResourceID(ctx, nil, resourceID)
 	if err != nil {
 		return err
 	}
@@ -68,7 +98,7 @@ func (s *UsageSQLStore) StopMetering(resourceID uuid.UUID) error {
 	record.EndTime = &now
 	record.Value = now.Sub(record.StartTime).Hours()
 
-	_, err = s.dao.Update(context.Background(), nil, record)
+	_, err = s.dao.Update(ctx, nil, record)
 	return err
 }
 

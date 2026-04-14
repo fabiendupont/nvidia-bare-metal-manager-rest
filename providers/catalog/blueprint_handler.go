@@ -38,7 +38,17 @@ func NewBlueprintHandler(store BlueprintStoreInterface) *BlueprintHandler {
 func (h *BlueprintHandler) handleCreateBlueprint(c echo.Context) error {
 	var b Blueprint
 	if err := c.Bind(&b); err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_request", "message": err.Error()})
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid_request", "message": "failed to parse request body"})
+	}
+
+	// Derive tenant_id from auth context — callers cannot set arbitrary tenant_id
+	if callerTenant := c.Get("tenant_id"); callerTenant != nil {
+		if tid, ok := callerTenant.(string); ok && tid != "" {
+			parsed, err := uuid.Parse(tid)
+			if err == nil {
+				b.TenantID = &parsed
+			}
+		}
 	}
 
 	// Set default visibility
@@ -143,6 +153,15 @@ func (h *BlueprintHandler) handleGetBlueprint(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
+
+	// Tenant isolation: private/org-scoped blueprints only visible to their owner
+	if b.TenantID != nil && b.Visibility != VisibilityPublic {
+		callerTenant := c.Get("tenant_id")
+		if callerTenant == nil || callerTenant.(string) != b.TenantID.String() {
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": "blueprint not found"})
+		}
+	}
+
 	return c.JSON(http.StatusOK, b)
 }
 
@@ -151,6 +170,14 @@ func (h *BlueprintHandler) handleUpdateBlueprint(c echo.Context) error {
 	existing, err := h.store.GetByID(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
+	}
+
+	// Ownership check: tenant-owned blueprints can only be updated by their owner
+	if existing.TenantID != nil {
+		callerTenant := c.Get("tenant_id")
+		if callerTenant == nil || callerTenant.(string) != existing.TenantID.String() {
+			return c.JSON(http.StatusForbidden, echo.Map{"error": "forbidden", "message": "cannot modify another tenant's blueprint"})
+		}
 	}
 
 	var update Blueprint
@@ -323,13 +350,6 @@ func parseRef(ref string) (nameOrID, version string) {
 		}
 	}
 	return ref, ""
-}
-
-// extractBlueprintID strips version pins like "@1.0.0" from a blueprint reference
-// and returns the name or ID portion. Kept for backward compatibility.
-func extractBlueprintID(ref string) string {
-	id, _ := parseRef(ref)
-	return id
 }
 
 // lookupBlueprint resolves a blueprint reference (from a "blueprint/..." resource type)

@@ -24,7 +24,7 @@ import (
 	cdb "github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db"
 	"github.com/NVIDIA/ncx-infra-controller-rest/db/pkg/db/model"
 	"github.com/google/uuid"
-	"golang.org/x/net/context"
+	"context"
 )
 
 // BlueprintStoreInterface defines the contract for blueprint storage.
