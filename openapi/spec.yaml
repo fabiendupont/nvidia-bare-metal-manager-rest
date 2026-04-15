@@ -2206,12 +2206,23 @@ paths:
             format: uuid
           in: query
           name: siteId
-          description: Filter VPCs by Site ID
+          description: Filter VPCs by Site ID. Can be specified multiple times to filter on more than one Site.
         - schema:
             type: string
           in: query
           name: status
-          description: Filter VPCs by Status
+          description: Filter VPCs by Status. Can be specified multiple times to filter on more than one Status.
+        - schema:
+            type: string
+          in: query
+          name: networkSecurityGroupId
+          description: Filter VPCs by Network Security Group ID. Can be specified multiple times to filter on more than one Network Security Group.
+        - schema:
+            type: string
+            format: uuid
+          in: query
+          name: nvLinkLogicalPartitionId
+          description: Filter VPCs by NVLink Logical Partition ID. Can be specified multiple times to filter on more than one NVLink Logical Partition.
         - schema:
             type: string
           in: query
@@ -2257,11 +2268,6 @@ paths:
           in: query
           name: orderBy
           description: Ordering for pagination query
-        - schema:
-            type: string
-          in: query
-          name: networkSecurityGroupId
-          description: Filter VPCs by NetworkSecurityGroup ID
     post:
       summary: Create VPC
       operationId: create-vpc
