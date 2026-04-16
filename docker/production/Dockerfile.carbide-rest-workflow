@@ -38,9 +38,14 @@ COPY go.mod go.sum VERSION ./
 RUN go mod download
 
 # Copy source files
-COPY workflow/ ./workflow/
+COPY api/ ./api/
+COPY auth/ ./auth/
 COPY common/ ./common/
 COPY db/ ./db/
+COPY provider/ ./provider/
+COPY providers/ ./providers/
+COPY sdk/ ./sdk/
+COPY workflow/ ./workflow/
 COPY ipam/ ./ipam/
 COPY site-workflow/ ./site-workflow/
 COPY workflow-schema/ ./workflow-schema/

@@ -64,7 +64,7 @@ jobs:
   security-secret-scan:
     name: Secret Scan with TruffleHog
     needs: prepare
-    runs-on: linux-amd64-cpu4
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       actions: read
