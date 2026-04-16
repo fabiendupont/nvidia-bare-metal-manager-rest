@@ -42,9 +42,12 @@ RUN go mod download
 
 # Copy necessary source files
 COPY api/ ./api/
-COPY common/ ./common/
 COPY auth/ ./auth/
+COPY common/ ./common/
 COPY db/ ./db/
+COPY provider/ ./provider/
+COPY providers/ ./providers/
+COPY sdk/ ./sdk/
 COPY workflow-schema/ ./workflow-schema/
 COPY workflow/ ./workflow/
 COPY site-workflow/ ./site-workflow/
