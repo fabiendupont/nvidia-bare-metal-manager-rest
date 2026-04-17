@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Title** | Ansible Automation Platform Provider |
-| **Status** | Implemented (prototype) |
+| **Status** | Implemented |
 | **Authors** | Fabien Dupont |
 | **Created** | 2026-03-30 |
 | **Target Release** | TBD |
