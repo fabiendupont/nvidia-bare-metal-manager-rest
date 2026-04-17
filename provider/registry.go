@@ -20,6 +20,9 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
+
+	"github.com/rs/zerolog/log"
 )
 
 // Registry manages provider lifecycle: registration, dependency resolution,
@@ -162,4 +165,33 @@ func (r *Registry) WorkflowProviders() []WorkflowProvider {
 		}
 	}
 	return result
+}
+
+// RegisterExternalProviders loads providers.yaml and registers any external
+// provider sidecars it describes. The config file is optional — if it does
+// not exist, no external providers are registered and nil is returned.
+func (r *Registry) RegisterExternalProviders(configPath string) error {
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		log.Debug().Str("path", configPath).Msg("no external providers config found")
+		return nil
+	}
+
+	cfg, err := LoadProvidersConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	providers, err := DiscoverExternalProviders(cfg)
+	if err != nil {
+		return err
+	}
+
+	for _, p := range providers {
+		if err := r.Register(p); err != nil {
+			return fmt.Errorf("failed to register external provider %q: %w", p.Name(), err)
+		}
+	}
+
+	log.Info().Int("count", len(providers)).Msg("external providers registered")
+	return nil
 }

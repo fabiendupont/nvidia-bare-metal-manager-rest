@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Title** | External Provider Sidecar Protocol |
-| **Status** | Proposal |
+| **Status** | Implemented |
 | **Authors** | Red Hat NCP Team |
 | **Created** | 2026-04-08 |
 | **Target Release** | TBD |

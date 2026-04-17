@@ -1,0 +1,17 @@
+{{- if .Values.externalProviders }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "carbide-rest-api.name" . }}-providers
+  namespace: {{ include "carbide-rest-api.namespace" . }}
+  labels:
+    {{- include "carbide-rest-api.labels" . | nindent 4 }}
+data:
+  providers.yaml: |
+    providers:
+      {{- range .Values.externalProviders }}
+      - name: {{ .name }}
+        type: external
+        socket: /var/run/nico/providers/{{ .name }}.sock
+      {{- end }}
+{{- end }}

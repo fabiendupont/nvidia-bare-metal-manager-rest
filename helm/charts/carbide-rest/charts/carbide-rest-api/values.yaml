@@ -96,3 +96,34 @@ config:
     rate: 10.0
     burst: 30
     expiresIn: 180
+
+# -- External provider sidecars (NEP-0008).
+# Each entry adds a sidecar container to the API pod and a corresponding
+# entry in providers.yaml. The sidecar communicates with NICo over a
+# Unix domain socket in the shared /var/run/nico/providers volume.
+#
+# Example:
+#   externalProviders:
+#     - name: netris-fabric
+#       image: registry.netris.io/nico-provider:1.0.0
+#       env:
+#         - name: NETRIS_URL
+#           value: https://netris.controller.local
+#         - name: NETRIS_USERNAME
+#           valueFrom:
+#             secretKeyRef:
+#               name: netris-credentials
+#               key: username
+#         - name: NETRIS_PASSWORD
+#           valueFrom:
+#             secretKeyRef:
+#               name: netris-credentials
+#               key: password
+#       resources:
+#         requests:
+#           memory: "64Mi"
+#           cpu: "50m"
+#         limits:
+#           memory: "256Mi"
+#           cpu: "250m"
+externalProviders: []

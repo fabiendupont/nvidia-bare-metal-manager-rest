@@ -1,0 +1,164 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+syntax = "proto3";
+
+package nico.provider.v1;
+
+option go_package = "github.com/NVIDIA/ncx-infra-controller-rest/provider/proto/nico/provider/v1;providerv1";
+
+// NicoProvider is the gRPC service that external provider sidecars implement.
+service NicoProvider {
+  // GetInfo returns the provider's metadata (name, version, features, dependencies).
+  rpc GetInfo(GetInfoRequest) returns (ProviderInfo);
+
+  // Init initializes the provider with core runtime context.
+  rpc Init(InitRequest) returns (InitResponse);
+
+  // Shutdown gracefully stops the provider.
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+
+  // GetRoutes returns the list of HTTP routes the provider handles.
+  rpc GetRoutes(GetRoutesRequest) returns (RouteList);
+
+  // HandleRequest proxies an HTTP request to the provider.
+  rpc HandleRequest(HTTPRequest) returns (HTTPResponse);
+
+  // GetHookRegistrations returns the hooks and reactions this provider wants.
+  rpc GetHookRegistrations(GetHookRegistrationsRequest) returns (HookRegistrationList);
+
+  // HandleSyncHook invokes a synchronous hook handler in the provider.
+  rpc HandleSyncHook(HookEvent) returns (HookResult);
+
+  // GetOpenAPIFragment returns the provider's OpenAPI spec fragment.
+  rpc GetOpenAPIFragment(GetOpenAPIFragmentRequest) returns (OpenAPIFragment);
+}
+
+// GetInfoRequest is an empty request for GetInfo.
+message GetInfoRequest {}
+
+// ProviderInfo describes a provider's metadata.
+message ProviderInfo {
+  string name = 1;
+  string version = 2;
+  repeated string features = 3;
+  repeated string dependencies = 4;
+}
+
+// InitRequest carries core runtime context to the provider.
+message InitRequest {
+  string temporal_endpoint = 1;
+  string temporal_namespace = 2;
+  string temporal_queue = 3;
+  map<string, string> config = 4;
+}
+
+// InitResponse is returned after successful initialization.
+message InitResponse {
+  bool ready = 1;
+  string message = 2;
+}
+
+// ShutdownRequest is an empty request for Shutdown.
+message ShutdownRequest {}
+
+// ShutdownResponse is returned after shutdown completes.
+message ShutdownResponse {}
+
+// GetRoutesRequest is an empty request for GetRoutes.
+message GetRoutesRequest {}
+
+// Route describes an HTTP endpoint the provider handles.
+message Route {
+  string method = 1;
+  string path = 2;
+  repeated string middlewares = 3;
+}
+
+// RouteList is a list of routes.
+message RouteList {
+  repeated Route routes = 1;
+}
+
+// HTTPRequest represents an inbound HTTP request forwarded to the provider.
+message HTTPRequest {
+  string method = 1;
+  string path = 2;
+  map<string, string> headers = 3;
+  map<string, string> query_params = 4;
+  map<string, string> path_params = 5;
+  bytes body = 6;
+
+  // Tenant context extracted from the Echo context by the core.
+  string org = 7;
+  string tenant_id = 8;
+  string user_id = 9;
+  repeated string roles = 10;
+}
+
+// HTTPResponse is the provider's HTTP response.
+message HTTPResponse {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+  bytes body = 3;
+}
+
+// GetHookRegistrationsRequest is an empty request for GetHookRegistrations.
+message GetHookRegistrationsRequest {}
+
+// HookRegistration describes a hook or reaction the provider wants to register.
+message HookRegistration {
+  // Type distinguishes synchronous hooks from asynchronous reactions.
+  enum Type {
+    SYNC = 0;
+    ASYNC = 1;
+  }
+
+  Type type = 1;
+  string feature = 2;
+  string event = 3;
+
+  // For ASYNC reactions only.
+  string target_workflow = 4;
+  string signal_name = 5;
+}
+
+// HookRegistrationList is a list of hook registrations.
+message HookRegistrationList {
+  repeated HookRegistration registrations = 1;
+}
+
+// HookEvent carries hook invocation data to the provider.
+message HookEvent {
+  string feature = 1;
+  string event = 2;
+  bytes payload = 3;
+}
+
+// HookResult is the provider's response to a sync hook invocation.
+message HookResult {
+  bool success = 1;
+  string error_message = 2;
+}
+
+// GetOpenAPIFragmentRequest is an empty request for GetOpenAPIFragment.
+message GetOpenAPIFragmentRequest {}
+
+// OpenAPIFragment carries the provider's OpenAPI spec as YAML.
+message OpenAPIFragment {
+  bytes spec_yaml = 1;
+}
