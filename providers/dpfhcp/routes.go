@@ -27,7 +27,7 @@ import (
 func (p *DPFHCPProvider) RegisterRoutes(group *echo.Group) {
 	prefix := p.apiPathPrefix + "/sites/:siteId/dpf-hcp"
 
-	group.Add(http.MethodPost, prefix, handleProvision(p.store))
-	group.Add(http.MethodGet, prefix, handleGetStatus(p.store))
-	group.Add(http.MethodDelete, prefix, handleDelete(p.store))
+	group.Add(http.MethodPost, prefix, handleProvision(p))
+	group.Add(http.MethodGet, prefix, handleGetStatus(p))
+	group.Add(http.MethodDelete, prefix, handleDelete(p))
 }

@@ -34,6 +34,7 @@ func (p *DPFHCPProvider) TaskQueue() string { return "dpfhcp-tasks" }
 func (p *DPFHCPProvider) RegisterWorkflows(w tsdkWorker.Worker) {
 	w.RegisterWorkflow(DPFHCPProvisioningWorkflow)
 	w.RegisterWorkflow(DPFHCPTeardownWorkflow)
+	w.RegisterWorkflow(DPFHCPSiteWatcherWorkflow)
 }
 
 // RegisterActivities registers all DPF HCP Temporal activities on the given worker.
@@ -188,4 +189,47 @@ func DPFHCPTeardownWorkflow(ctx workflow.Context, siteID string) error {
 
 	logger.Info().Msg("completing workflow")
 	return nil
+}
+
+// DPFHCPSiteWatcherWorkflow listens for site lifecycle signals and starts
+// the appropriate child workflow (provisioning or teardown).
+func DPFHCPSiteWatcherWorkflow(ctx workflow.Context) error {
+	logger := log.With().Str("Workflow", "DPFHCPSiteWatcher").Logger()
+	logger.Info().Msg("starting site watcher workflow")
+
+	for {
+		selector := workflow.NewSelector(ctx)
+
+		createdCh := workflow.GetSignalChannel(ctx, "site-created")
+		selector.AddReceive(createdCh, func(c workflow.ReceiveChannel, more bool) {
+			var siteID string
+			c.Receive(ctx, &siteID)
+			logger.Info().Str("SiteID", siteID).Msg("received site-created signal")
+
+			childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+				WorkflowID: "dpfhcp-provision-" + siteID,
+				TaskQueue:  "dpfhcp-tasks",
+			})
+			workflow.ExecuteChildWorkflow(childCtx, DPFHCPProvisioningWorkflow, siteID, DPFHCPRequest{})
+		})
+
+		deletedCh := workflow.GetSignalChannel(ctx, "site-deleted")
+		selector.AddReceive(deletedCh, func(c workflow.ReceiveChannel, more bool) {
+			var siteID string
+			c.Receive(ctx, &siteID)
+			logger.Info().Str("SiteID", siteID).Msg("received site-deleted signal")
+
+			childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+				WorkflowID: "dpfhcp-teardown-" + siteID,
+				TaskQueue:  "dpfhcp-tasks",
+			})
+			workflow.ExecuteChildWorkflow(childCtx, DPFHCPTeardownWorkflow, siteID)
+		})
+
+		selector.Select(ctx)
+
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
 }

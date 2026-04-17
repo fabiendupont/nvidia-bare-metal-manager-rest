@@ -22,10 +22,12 @@ import (
 	"time"
 
 	echo "github.com/labstack/echo/v4"
+
+	tsdkClient "go.temporal.io/sdk/client"
 )
 
 // handleProvision handles POST /sites/:siteId/dpf-hcp.
-func handleProvision(store *ProvisioningStore) echo.HandlerFunc {
+func handleProvision(p *DPFHCPProvider) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		siteID := c.Param("siteId")
 		if siteID == "" {
@@ -83,11 +85,23 @@ func handleProvision(store *ProvisioningStore) echo.HandlerFunc {
 			Updated: now,
 		}
 
-		if err := store.Create(record); err != nil {
+		if err := p.store.Create(record); err != nil {
 			return c.JSON(http.StatusConflict, echo.Map{
 				"error":   "conflict",
 				"message": err.Error(),
 			})
+		}
+
+		if p.temporal != nil {
+			opts := tsdkClient.StartWorkflowOptions{
+				ID:        "dpfhcp-provision-" + siteID,
+				TaskQueue: p.TaskQueue(),
+			}
+			run, err := p.temporal.ExecuteWorkflow(c.Request().Context(), opts, DPFHCPProvisioningWorkflow, siteID, req)
+			if err == nil {
+				record.WorkflowID = run.GetID()
+				_ = p.store.Update(record)
+			}
 		}
 
 		return c.JSON(http.StatusCreated, record)
@@ -95,7 +109,7 @@ func handleProvision(store *ProvisioningStore) echo.HandlerFunc {
 }
 
 // handleGetStatus handles GET /sites/:siteId/dpf-hcp.
-func handleGetStatus(store *ProvisioningStore) echo.HandlerFunc {
+func handleGetStatus(p *DPFHCPProvider) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		siteID := c.Param("siteId")
 		if siteID == "" {
@@ -105,7 +119,7 @@ func handleGetStatus(store *ProvisioningStore) echo.HandlerFunc {
 			})
 		}
 
-		record, err := store.GetBySiteID(siteID)
+		record, err := p.store.GetBySiteID(siteID)
 		if err != nil {
 			return c.JSON(http.StatusNotFound, echo.Map{
 				"error":   "not_found",
@@ -118,7 +132,7 @@ func handleGetStatus(store *ProvisioningStore) echo.HandlerFunc {
 }
 
 // handleDelete handles DELETE /sites/:siteId/dpf-hcp.
-func handleDelete(store *ProvisioningStore) echo.HandlerFunc {
+func handleDelete(p *DPFHCPProvider) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		siteID := c.Param("siteId")
 		if siteID == "" {
@@ -128,7 +142,7 @@ func handleDelete(store *ProvisioningStore) echo.HandlerFunc {
 			})
 		}
 
-		record, err := store.GetBySiteID(siteID)
+		record, err := p.store.GetBySiteID(siteID)
 		if err != nil {
 			return c.JSON(http.StatusNotFound, echo.Map{
 				"error":   "not_found",
@@ -139,11 +153,23 @@ func handleDelete(store *ProvisioningStore) echo.HandlerFunc {
 		record.Status = StatusDeleting
 		record.Updated = time.Now().UTC()
 
-		if err := store.Update(record); err != nil {
+		if err := p.store.Update(record); err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{
 				"error":   "internal_error",
 				"message": err.Error(),
 			})
+		}
+
+		if p.temporal != nil {
+			opts := tsdkClient.StartWorkflowOptions{
+				ID:        "dpfhcp-teardown-" + siteID,
+				TaskQueue: p.TaskQueue(),
+			}
+			run, err := p.temporal.ExecuteWorkflow(c.Request().Context(), opts, DPFHCPTeardownWorkflow, siteID)
+			if err == nil {
+				record.WorkflowID = run.GetID()
+				_ = p.store.Update(record)
+			}
 		}
 
 		return c.JSON(http.StatusAccepted, echo.Map{

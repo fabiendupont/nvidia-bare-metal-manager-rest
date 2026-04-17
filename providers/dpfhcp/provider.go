@@ -24,6 +24,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	tsdkClient "go.temporal.io/sdk/client"
+
 	"github.com/NVIDIA/ncx-infra-controller-rest/provider"
 )
 
@@ -32,6 +34,7 @@ type DPFHCPProvider struct {
 	store         *ProvisioningStore
 	apiPathPrefix string
 	k8sClient     *DPFHCPClient
+	temporal      tsdkClient.Client
 }
 
 // DPFHCPActivities holds the dependencies needed by DPF HCP workflow activities.
@@ -53,6 +56,7 @@ func (p *DPFHCPProvider) Dependencies() []string { return []string{"nico-site"} 
 func (p *DPFHCPProvider) Init(ctx provider.ProviderContext) error {
 	p.store = NewProvisioningStore()
 	p.apiPathPrefix = ctx.APIPathPrefix
+	p.temporal = ctx.Temporal
 
 	// Initialize K8s client for DPFHCPProvisioner CR management.
 	// Try in-cluster config first, fall back to kubeconfig.

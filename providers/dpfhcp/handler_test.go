@@ -58,7 +58,8 @@ func setupEchoContext(method, path, body string, siteID string) (echo.Context, *
 func TestHandleProvision(t *testing.T) {
 	t.Run("success 201", func(t *testing.T) {
 		store := NewProvisioningStore()
-		handler := handleProvision(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleProvision(p)
 
 		c, rec := setupEchoContext(http.MethodPost, "/sites/site-1/dpf-hcp", validRequestBody, "site-1")
 
@@ -75,7 +76,8 @@ func TestHandleProvision(t *testing.T) {
 
 	t.Run("duplicate 409", func(t *testing.T) {
 		store := NewProvisioningStore()
-		handler := handleProvision(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleProvision(p)
 
 		// First request succeeds
 		c, _ := setupEchoContext(http.MethodPost, "/sites/site-1/dpf-hcp", validRequestBody, "site-1")
@@ -94,7 +96,8 @@ func TestHandleProvision(t *testing.T) {
 
 	t.Run("missing fields 400", func(t *testing.T) {
 		store := NewProvisioningStore()
-		handler := handleProvision(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleProvision(p)
 
 		// Missing baseDomain
 		incompleteBody := `{
@@ -117,7 +120,8 @@ func TestHandleProvision(t *testing.T) {
 
 	t.Run("missing siteId 400", func(t *testing.T) {
 		store := NewProvisioningStore()
-		handler := handleProvision(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleProvision(p)
 
 		c, rec := setupEchoContext(http.MethodPost, "/sites//dpf-hcp", validRequestBody, "")
 		err := handler(c)
@@ -132,7 +136,8 @@ func TestHandleGetStatus(t *testing.T) {
 		record := newTestRecord("site-1")
 		require.NoError(t, store.Create(record))
 
-		handler := handleGetStatus(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleGetStatus(p)
 		c, rec := setupEchoContext(http.MethodGet, "/sites/site-1/dpf-hcp", "", "site-1")
 
 		err := handler(c)
@@ -146,7 +151,8 @@ func TestHandleGetStatus(t *testing.T) {
 
 	t.Run("not found 404", func(t *testing.T) {
 		store := NewProvisioningStore()
-		handler := handleGetStatus(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleGetStatus(p)
 
 		c, rec := setupEchoContext(http.MethodGet, "/sites/missing/dpf-hcp", "", "missing")
 
@@ -166,7 +172,8 @@ func TestHandleDelete(t *testing.T) {
 		record := newTestRecord("site-1")
 		require.NoError(t, store.Create(record))
 
-		handler := handleDelete(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleDelete(p)
 		c, rec := setupEchoContext(http.MethodDelete, "/sites/site-1/dpf-hcp", "", "site-1")
 
 		err := handler(c)
@@ -181,7 +188,8 @@ func TestHandleDelete(t *testing.T) {
 
 	t.Run("not found 404", func(t *testing.T) {
 		store := NewProvisioningStore()
-		handler := handleDelete(store)
+		p := &DPFHCPProvider{store: store}
+		handler := handleDelete(p)
 
 		c, rec := setupEchoContext(http.MethodDelete, "/sites/missing/dpf-hcp", "", "missing")
 
