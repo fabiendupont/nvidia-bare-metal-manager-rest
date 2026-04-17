@@ -27,6 +27,7 @@ const (
 	FaultStateResolved     = "resolved"
 	FaultStateEscalated    = "escalated"
 	FaultStateSuppressed   = "suppressed"
+	FaultStateArchived     = "archived"
 )
 
 // Severities.
@@ -108,12 +109,14 @@ type FaultIngestionRequest struct {
 
 // FaultEventFilter contains fields for querying fault events.
 type FaultEventFilter struct {
-	SiteID    *string
-	MachineID *string
-	Severity  []string
-	Component []string
-	State     []string
-	Source    *string
+	SiteID        *string
+	MachineID     *string
+	Severity      []string
+	Component     []string
+	State         []string
+	Source        *string
+	DetectedAfter  *time.Time
+	DetectedBefore *time.Time
 }
 
 // MachineContext holds the IDs resolved from a machine lookup.

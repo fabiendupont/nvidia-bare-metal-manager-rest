@@ -38,8 +38,10 @@ type HealthProvider struct {
 	classificationStore    *ClassificationStore
 
 	// Handlers
-	faultHandler        *FaultHandler
-	serviceEventHandler *ServiceEventHandler
+	faultHandler           *FaultHandler
+	serviceEventHandler    *ServiceEventHandler
+	classificationHandler  *ClassificationHandler
+	webhookHandler         *WebhookHandler
 
 	// Metrics
 	metrics         *FaultMetrics
@@ -69,6 +71,8 @@ func (p *HealthProvider) Init(ctx provider.ProviderContext) error {
 	// Create handlers
 	p.faultHandler = NewFaultHandler(p.faultStore, p.classificationStore)
 	p.serviceEventHandler = NewServiceEventHandler(p.serviceEventStore, p.faultServiceEventStore)
+	p.classificationHandler = NewClassificationHandler(p.classificationStore)
+	p.webhookHandler = NewWebhookHandler(p.faultStore, p.classificationStore)
 
 	// Create Prometheus metrics
 	p.metricsRegistry = prometheus.NewRegistry()

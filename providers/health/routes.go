@@ -32,6 +32,8 @@ import (
 func (p *HealthProvider) RegisterRoutes(group *echo.Group) {
 	p.registerFaultRoutes(group)
 	p.registerServiceEventRoutes(group)
+	p.registerClassificationRoutes(group)
+	p.registerWebhookRoutes(group)
 	p.registerMetricsRoute(group)
 }
 
@@ -62,6 +64,29 @@ func (p *HealthProvider) registerServiceEventRoutes(group *echo.Group) {
 	group.Add(http.MethodGet, prefix, p.serviceEventHandler.handleListServiceEvents)
 	group.Add(http.MethodGet, prefix+"/active", p.serviceEventHandler.handleGetActiveServiceEvents)
 	group.Add(http.MethodGet, prefix+"/:id", p.serviceEventHandler.handleGetServiceEvent)
+}
+
+// registerClassificationRoutes adds operator-facing classification management endpoints.
+func (p *HealthProvider) registerClassificationRoutes(group *echo.Group) {
+	if p.classificationHandler == nil {
+		return
+	}
+
+	prefix := p.apiPathPrefix + "/health/classifications"
+
+	group.Add(http.MethodGet, prefix, p.classificationHandler.handleListClassifications)
+	group.Add(http.MethodPut, prefix+"/:classification", p.classificationHandler.handleUpdateClassification)
+}
+
+// registerWebhookRoutes adds webhook ingestion endpoints for external alert sources.
+func (p *HealthProvider) registerWebhookRoutes(group *echo.Group) {
+	if p.webhookHandler == nil {
+		return
+	}
+
+	prefix := p.apiPathPrefix + "/health/webhooks"
+
+	group.Add(http.MethodPost, prefix+"/alertmanager", p.webhookHandler.handleAlertManagerWebhook)
 }
 
 // registerMetricsRoute exposes fault event Prometheus metrics.

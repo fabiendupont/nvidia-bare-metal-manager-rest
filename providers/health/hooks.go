@@ -34,6 +34,30 @@ func (p *HealthProvider) registerHooks(registry *provider.Registry) {
 		SignalName:     "fault-ingested",
 	})
 
+	// After remediation completes, notify watcher workflow
+	registry.RegisterReaction(provider.Reaction{
+		Feature:        "health",
+		Event:          provider.EventPostFaultRemediation,
+		TargetWorkflow: "health-fault-watcher",
+		SignalName:     "fault-remediated",
+	})
+
+	// After a fault is resolved, notify watcher workflow
+	registry.RegisterReaction(provider.Reaction{
+		Feature:        "health",
+		Event:          provider.EventPostFaultResolved,
+		TargetWorkflow: "health-fault-watcher",
+		SignalName:     "fault-resolved",
+	})
+
+	// After a fault is escalated, notify watcher workflow
+	registry.RegisterReaction(provider.Reaction{
+		Feature:        "health",
+		Event:          provider.EventPostFaultEscalated,
+		TargetWorkflow: "health-fault-watcher",
+		SignalName:     "fault-escalated",
+	})
+
 	// Block instance creation on machines with open critical faults
 	registry.RegisterHook(provider.SyncHook{
 		Feature: "compute",

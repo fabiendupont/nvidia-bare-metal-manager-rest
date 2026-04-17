@@ -328,6 +328,16 @@ func buildFaultFilter(c echo.Context) FaultEventFilter {
 	if v := c.QueryParam("machine_id"); v != "" {
 		filter.MachineID = &v
 	}
+	if v := c.QueryParam("detected_after"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.DetectedAfter = &t
+		}
+	}
+	if v := c.QueryParam("detected_before"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			filter.DetectedBefore = &t
+		}
+	}
 
 	return filter
 }

@@ -33,6 +33,7 @@ func (p *HealthProvider) TaskQueue() string { return "health-tasks" }
 // RegisterWorkflows registers all health-domain Temporal workflows on the given worker.
 func (p *HealthProvider) RegisterWorkflows(w tsdkWorker.Worker) {
 	w.RegisterWorkflow(FaultRemediationWorkflow)
+	w.RegisterWorkflow(FaultRetentionWorkflow)
 }
 
 // RegisterActivities registers all health-domain Temporal activities on the given worker.
@@ -91,11 +92,29 @@ func FaultRemediationWorkflow(ctx workflow.Context, faultEventID string) error {
 
 	// Step 3: Remediate — execute component-specific recovery action
 	logger.Info().Msg("remediating fault")
-	err = workflow.ExecuteActivity(actCtx, activities.RemediateGPU, faultEventID, mapping).Get(ctx, nil)
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to remediate fault, escalating")
-		_ = workflow.ExecuteActivity(actCtx, activities.EscalateFault, faultEventID, "remediation failed: "+err.Error()).Get(ctx, nil)
-		return err
+	var remediateErr error
+	switch mapping.Component {
+	case ComponentGPU:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateGPU, faultEventID, mapping).Get(ctx, nil)
+	case ComponentNVSwitch:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateNVSwitch, faultEventID, mapping).Get(ctx, nil)
+	case ComponentPower:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediatePower, faultEventID, mapping).Get(ctx, nil)
+	case ComponentNetwork:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateNetwork, faultEventID, mapping).Get(ctx, nil)
+	case ComponentBMC:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateBMC, faultEventID, mapping).Get(ctx, nil)
+	case ComponentStorage:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateStorage, faultEventID, mapping).Get(ctx, nil)
+	case ComponentCooling:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateCooling, faultEventID, mapping).Get(ctx, nil)
+	default:
+		remediateErr = workflow.ExecuteActivity(actCtx, activities.RemediateGPU, faultEventID, mapping).Get(ctx, nil)
+	}
+	if remediateErr != nil {
+		logger.Warn().Err(remediateErr).Msg("failed to remediate fault, escalating")
+		_ = workflow.ExecuteActivity(actCtx, activities.EscalateFault, faultEventID, "remediation failed: "+remediateErr.Error()).Get(ctx, nil)
+		return remediateErr
 	}
 
 	// Step 4: ValidateRecovery — run component-specific diagnostics
@@ -118,4 +137,50 @@ func FaultRemediationWorkflow(ctx workflow.Context, faultEventID string) error {
 
 	logger.Info().Msg("completing workflow")
 	return nil
+}
+
+// FaultRetentionWorkflow periodically archives resolved fault events that are
+// older than the configured retention period. It runs as a long-lived Temporal
+// workflow that wakes up on a timer, moves old resolved faults to the archived
+// state, and then sleeps until the next cycle.
+func FaultRetentionWorkflow(ctx workflow.Context, retentionDays int) error {
+	logger := log.With().Str("Workflow", "FaultRetention").
+		Int("RetentionDays", retentionDays).Logger()
+
+	logger.Info().Msg("starting fault retention workflow")
+
+	if retentionDays <= 0 {
+		retentionDays = 90
+	}
+
+	retrypolicy := &temporal.RetryPolicy{
+		InitialInterval:    5 * time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    5 * time.Minute,
+		MaximumAttempts:    5,
+	}
+
+	activityOptions := workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Minute,
+		RetryPolicy:         retrypolicy,
+	}
+	actCtx := workflow.WithActivityOptions(ctx, activityOptions)
+
+	var activities HealthActivities
+
+	for {
+		// Sleep until next retention check (24 hours)
+		if err := workflow.Sleep(ctx, 24*time.Hour); err != nil {
+			return err
+		}
+
+		cutoff := workflow.Now(ctx).AddDate(0, 0, -retentionDays)
+
+		logger.Info().Time("Cutoff", cutoff).Msg("running retention sweep")
+
+		err := workflow.ExecuteActivity(actCtx, activities.ArchiveResolvedFaults, cutoff).Get(ctx, nil)
+		if err != nil {
+			logger.Warn().Err(err).Msg("retention sweep failed, will retry next cycle")
+		}
+	}
 }

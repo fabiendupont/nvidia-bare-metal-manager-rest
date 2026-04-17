@@ -214,6 +214,27 @@ func (s *FaultEventStore) ListOpenCriticalByMachine(_ context.Context, machineID
 	return result, nil
 }
 
+// GetResolvedOlderThan returns all resolved fault events with a ResolvedAt
+// timestamp before the given cutoff. Used by the retention workflow to
+// archive old faults.
+func (s *FaultEventStore) GetResolvedOlderThan(cutoff time.Time) []*FaultEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []*FaultEvent
+	for _, event := range s.events {
+		if event.State != FaultStateResolved {
+			continue
+		}
+		if event.ResolvedAt == nil || !event.ResolvedAt.Before(cutoff) {
+			continue
+		}
+		out := *event
+		result = append(result, &out)
+	}
+	return result
+}
+
 // matchesFaultFilter returns true if the event satisfies all non-nil/non-empty
 // filter fields.
 func matchesFaultFilter(event *FaultEvent, f FaultEventFilter) bool {
@@ -233,6 +254,12 @@ func matchesFaultFilter(event *FaultEvent, f FaultEventFilter) bool {
 		return false
 	}
 	if f.Source != nil && event.Source != *f.Source {
+		return false
+	}
+	if f.DetectedAfter != nil && !event.DetectedAt.After(*f.DetectedAfter) {
+		return false
+	}
+	if f.DetectedBefore != nil && !event.DetectedAt.Before(*f.DetectedBefore) {
 		return false
 	}
 	return true
