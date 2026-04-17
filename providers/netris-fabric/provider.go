@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
+	tsdkClient "go.temporal.io/sdk/client"
 
 	"github.com/NVIDIA/ncx-infra-controller-rest/provider"
 	"github.com/NVIDIA/ncx-infra-controller-rest/providers/netris-fabric/client"
@@ -41,6 +42,7 @@ type NetrisFabricProvider struct {
 	netrisUser string
 	netrisPass string
 	client     *client.Client
+	temporal   tsdkClient.Client
 	vpcIDs     *idMap // NICo VPC UUID → Netris VPC int ID
 	subnetIDs  *idMap // NICo Subnet UUID → Netris VNET int ID
 	syncMu     sync.Mutex
@@ -92,6 +94,7 @@ func (p *NetrisFabricProvider) Init(ctx provider.ProviderContext) error {
 	}
 
 	p.client = c
+	p.temporal = ctx.Temporal
 
 	p.registerHooks(ctx.Registry)
 
