@@ -21,12 +21,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
+
+// outputRefPattern matches {{ resource.field }} patterns in property values.
+var outputRefPattern = regexp.MustCompile(`\{\{\s*(\w+)\.(\w+)\s*\}\}`)
 
 // BlueprintExecutionWorkflow is a Temporal workflow that executes a
 // compiled DAG from a blueprint. It processes resources layer by layer,
@@ -73,10 +78,13 @@ func BlueprintExecutionWorkflow(ctx workflow.Context, dag DAG, orderID string, p
 					resourceName = fmt.Sprintf("%s-%d", name, i)
 				}
 
+				// Resolve {{ resource.field }} references in properties
+				resolvedProps := resolveOutputRefs(node.Properties, outputs)
+
 				input := CreateResourceInput{
 					Name:       resourceName,
 					Type:       node.Type,
-					Properties: node.Properties,
+					Properties: resolvedProps,
 					Outputs:    outputs,
 				}
 
@@ -222,6 +230,34 @@ func (a *ExecutionActivities) CreateResource(ctx context.Context, input CreateRe
 		Type:       input.Type,
 		Outputs:    map[string]interface{}{"id": resourceID},
 	}, nil
+}
+
+// resolveOutputRefs replaces {{ resource.field }} patterns in property values
+// with actual outputs from previously created resources.
+func resolveOutputRefs(props map[string]interface{}, outputs map[string]map[string]interface{}) map[string]interface{} {
+	resolved := make(map[string]interface{}, len(props))
+	for k, v := range props {
+		s, ok := v.(string)
+		if !ok {
+			resolved[k] = v
+			continue
+		}
+		resolved[k] = outputRefPattern.ReplaceAllStringFunc(s, func(match string) string {
+			parts := outputRefPattern.FindStringSubmatch(match)
+			if len(parts) != 3 {
+				return match
+			}
+			resName := strings.TrimSpace(parts[1])
+			field := strings.TrimSpace(parts[2])
+			if resOutputs, ok := outputs[resName]; ok {
+				if val, ok := resOutputs[field]; ok {
+					return fmt.Sprintf("%v", val)
+				}
+			}
+			return match
+		})
+	}
+	return resolved
 }
 
 // DeleteResource deletes a NICo resource during rollback. Dispatches

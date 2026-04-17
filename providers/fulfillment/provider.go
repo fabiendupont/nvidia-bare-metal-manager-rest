@@ -96,3 +96,8 @@ func (p *FulfillmentProvider) Init(ctx provider.ProviderContext) error {
 func (p *FulfillmentProvider) Shutdown(_ context.Context) error {
 	return nil
 }
+
+// OrderStore returns the order store for cross-provider access.
+func (p *FulfillmentProvider) OrderStore() OrderStoreInterface {
+	return p.orderStore
+}

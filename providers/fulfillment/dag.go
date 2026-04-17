@@ -35,6 +35,22 @@ type BlueprintResource struct {
 	Properties map[string]interface{}
 }
 
+// BlueprintParameter mirrors catalog.BlueprintParameter for sub-blueprint
+// expansion without importing the catalog package (avoiding circular imports).
+type BlueprintParameter struct {
+	Name    string
+	Type    string
+	Default interface{}
+}
+
+// BlueprintLookupFunc resolves a sub-blueprint reference by name and returns
+// its resources and parameters. Used during DAG compilation to expand
+// "blueprint/..." resource types into inline resources.
+type BlueprintLookupFunc func(name string) ([]BlueprintResource, []BlueprintParameter, error)
+
+// maxExpansionDepth limits nested blueprint expansion to prevent infinite recursion.
+const maxExpansionDepth = 5
+
 // DAGNode represents a resource in the execution graph.
 type DAGNode struct {
 	Name       string
@@ -53,10 +69,23 @@ type DAG struct {
 
 // CompileDAG takes a blueprint's resources and parameters, resolves
 // expressions, evaluates counts, and returns a DAG ready for execution.
+// If lookupFn is non-nil, "blueprint/..." resource types are expanded
+// inline by recursively resolving sub-blueprints up to maxExpansionDepth.
 func CompileDAG(resources map[string]BlueprintResource, params map[string]interface{}) (*DAG, error) {
-	nodes := make(map[string]*DAGNode, len(resources))
+	return CompileDAGWithLookup(resources, params, nil)
+}
 
-	for name, res := range resources {
+// CompileDAGWithLookup compiles a DAG with optional sub-blueprint expansion.
+func CompileDAGWithLookup(resources map[string]BlueprintResource, params map[string]interface{}, lookupFn BlueprintLookupFunc) (*DAG, error) {
+	// Expand sub-blueprint references before building nodes
+	expanded, err := expandBlueprints(resources, params, lookupFn, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make(map[string]*DAGNode, len(expanded))
+
+	for name, res := range expanded {
 		count := 1
 		if res.Count != "" {
 			resolved, err := resolveExprInt(res.Count, params)
@@ -88,6 +117,93 @@ func CompileDAG(resources map[string]BlueprintResource, params map[string]interf
 	}
 
 	return &DAG{Nodes: nodes, Order: order}, nil
+}
+
+// expandBlueprints recursively replaces "blueprint/..." resources with the
+// child blueprint's resources, prefixing names with the parent resource name.
+// Properties from the parent resource are passed as parameter values to the
+// child blueprint's parameter defaults.
+func expandBlueprints(resources map[string]BlueprintResource, params map[string]interface{}, lookupFn BlueprintLookupFunc, depth int) (map[string]BlueprintResource, error) {
+	if depth > maxExpansionDepth {
+		return nil, fmt.Errorf("sub-blueprint nesting exceeds maximum depth of %d", maxExpansionDepth)
+	}
+	if lookupFn == nil {
+		return resources, nil
+	}
+
+	result := make(map[string]BlueprintResource, len(resources))
+
+	for name, res := range resources {
+		if !strings.HasPrefix(res.Type, "blueprint/") {
+			result[name] = res
+			continue
+		}
+
+		ref := res.Type[10:] // strip "blueprint/" prefix
+		childResources, childParams, err := lookupFn(ref)
+		if err != nil {
+			return nil, fmt.Errorf("resource %q: failed to resolve sub-blueprint %q: %w", name, ref, err)
+		}
+
+		// Build child parameter values: defaults overridden by parent properties
+		childParamValues := make(map[string]interface{})
+		for _, cp := range childParams {
+			if cp.Default != nil {
+				childParamValues[cp.Name] = cp.Default
+			}
+		}
+		for k, v := range res.Properties {
+			childParamValues[k] = v
+		}
+
+		// Merge child param values into the main params for expression resolution
+		mergedParams := make(map[string]interface{}, len(params)+len(childParamValues))
+		for k, v := range params {
+			mergedParams[k] = v
+		}
+		for k, v := range childParamValues {
+			mergedParams[k] = v
+		}
+
+		// Convert child resources slice to a map keyed by prefixed name
+		childMap := make(map[string]BlueprintResource, len(childResources))
+		for i, cr := range childResources {
+			childName := fmt.Sprintf("%s/%s", name, cr.Type)
+			if i < len(childResources) {
+				// Use a stable name: parent/childIndex if no better name
+				childName = fmt.Sprintf("%s/res-%d", name, i)
+			}
+			// Rewrite depends_on to use prefixed names
+			var prefixedDeps []string
+			for _, dep := range cr.DependsOn {
+				prefixedDeps = append(prefixedDeps, name+"/"+dep)
+			}
+			// Also inherit parent's depends_on for the first layer (no deps)
+			if len(cr.DependsOn) == 0 {
+				prefixedDeps = append(prefixedDeps, res.DependsOn...)
+			}
+
+			childMap[childName] = BlueprintResource{
+				Type:       cr.Type,
+				DependsOn:  prefixedDeps,
+				Condition:  cr.Condition,
+				Count:      cr.Count,
+				Properties: cr.Properties,
+			}
+		}
+
+		// Recursively expand any nested blueprint references
+		expandedChildren, err := expandBlueprints(childMap, mergedParams, lookupFn, depth+1)
+		if err != nil {
+			return nil, err
+		}
+
+		for k, v := range expandedChildren {
+			result[k] = v
+		}
+	}
+
+	return result, nil
 }
 
 func topoSort(nodes map[string]*DAGNode) ([][]string, error) {

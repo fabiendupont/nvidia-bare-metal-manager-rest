@@ -48,6 +48,9 @@ func (p *CatalogProvider) RegisterRoutes(group *echo.Group) {
 	group.Add(http.MethodPost, bp+"/:id/validate", withAuth(p.blueprintHandler.handleValidateBlueprint))
 	group.Add(http.MethodGet, p.apiPathPrefix+"/catalog/resource-types", withAuth(p.blueprintHandler.handleListResourceTypes))
 
+	// RBAC generation — any authenticated member
+	group.Add(http.MethodPost, bp+"/:id/generate-role", withAuth(p.blueprintHandler.handleGenerateRole))
+
 	// Write endpoints — require blueprint author or provider admin
 	group.Add(http.MethodPost, bp, withRole(p.blueprintHandler.handleCreateBlueprint,
 		provider.RoleProviderAdmin, provider.RoleTenantAdmin, provider.RoleBlueprintAuthor))
@@ -57,4 +60,12 @@ func (p *CatalogProvider) RegisterRoutes(group *echo.Group) {
 	// Delete — provider admin only
 	group.Add(http.MethodDelete, bp+"/:id", withRole(p.blueprintHandler.handleDeleteBlueprint,
 		provider.RoleProviderAdmin))
+
+	// Order proxy — delegates to fulfillment provider
+	if p.orderProxy != nil {
+		orders := p.apiPathPrefix + "/catalog/orders"
+		group.Add(http.MethodGet, orders, withAuth(p.orderProxy.handleListOrders))
+		group.Add(http.MethodGet, orders+"/:id", withAuth(p.orderProxy.handleGetOrder))
+		group.Add(http.MethodDelete, orders+"/:id", withAuth(p.orderProxy.handleDeleteOrder))
+	}
 }

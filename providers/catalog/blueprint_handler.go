@@ -19,6 +19,8 @@ package catalog
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/NVIDIA/ncx-infra-controller-rest/provider"
 	"github.com/google/uuid"
@@ -265,7 +267,29 @@ func (h *BlueprintHandler) handleListResourceTypes(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"resource_types": AvailableResourceTypes})
 }
 
+// handleGenerateRole returns the minimum role specification needed to order
+// a blueprint. It walks all resources (including sub-blueprints) and maps
+// each resource type to the permissions required to create it.
+// POST /catalog/blueprints/:id/generate-role
+func (h *BlueprintHandler) handleGenerateRole(c echo.Context) error {
+	id := c.Param("id")
+	b, err := h.store.GetByID(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
+	}
+
+	spec := GenerateRoleSpec(b, h.store)
+	return c.JSON(http.StatusOK, spec)
+}
+
+// estimateRequest is the optional body for the cost estimate endpoint.
+type estimateRequest struct {
+	Parameters map[string]interface{} `json:"parameters"`
+}
+
 // handleEstimateCost returns a cost estimate for a blueprint with given parameters.
+// Accepts an optional JSON body with {"parameters":{...}} to influence count
+// expressions and conditional resources in the cost calculation.
 // POST /catalog/blueprints/:id/estimate
 func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 	id := c.Param("id")
@@ -274,6 +298,11 @@ func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "not_found", "message": err.Error()})
 	}
 
+	// Parse optional parameters from request body
+	var req estimateRequest
+	// Bind is best-effort; empty body is fine
+	_ = c.Bind(&req)
+
 	// If the blueprint has explicit pricing, return it directly
 	if b.Pricing != nil {
 		return c.JSON(http.StatusOK, CostEstimate{
@@ -281,6 +310,7 @@ func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 			Unit:          b.Pricing.Unit,
 			Currency:      b.Pricing.Currency,
 			Breakdown:     []CostBreakdownItem{{Blueprint: b.Name, Rate: b.Pricing.Rate}},
+			Parameters:    req.Parameters,
 		})
 	}
 
@@ -291,6 +321,15 @@ func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 	currency := "USD"
 
 	for _, res := range b.Resources {
+		// Apply count multiplier if parameters are provided
+		multiplier := 1
+		if res.Count != "" && len(req.Parameters) > 0 {
+			resolved := resolveCountExpr(res.Count, req.Parameters)
+			if resolved > 0 {
+				multiplier = resolved
+			}
+		}
+
 		ref := extractBlueprintRef(res.Type)
 		if ref == "" {
 			continue
@@ -300,12 +339,14 @@ func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 			continue
 		}
 		if child.Pricing != nil {
-			totalRate += child.Pricing.Rate
+			rate := child.Pricing.Rate * float64(multiplier)
+			totalRate += rate
 			unit = child.Pricing.Unit
 			currency = child.Pricing.Currency
 			breakdown = append(breakdown, CostBreakdownItem{
-				Blueprint: child.Name,
-				Rate:      child.Pricing.Rate,
+				Blueprint:  child.Name,
+				Rate:       rate,
+				Multiplier: multiplier,
 			})
 		}
 	}
@@ -315,21 +356,48 @@ func (h *BlueprintHandler) handleEstimateCost(c echo.Context) error {
 		Unit:          unit,
 		Currency:      currency,
 		Breakdown:     breakdown,
+		Parameters:    req.Parameters,
 	})
+}
+
+// resolveCountExpr attempts to resolve a count expression to an integer
+// using provided parameters. Returns 1 on failure.
+func resolveCountExpr(expr string, params map[string]interface{}) int {
+	expr = strings.TrimSpace(expr)
+	matches := exprPattern.FindStringSubmatch(expr)
+	if matches == nil {
+		v, err := strconv.Atoi(expr)
+		if err != nil {
+			return 1
+		}
+		return v
+	}
+	key := strings.TrimSpace(matches[1])
+	if val, ok := params[key]; ok {
+		switch v := val.(type) {
+		case float64:
+			return int(v)
+		case int:
+			return v
+		}
+	}
+	return 1
 }
 
 // CostEstimate represents the estimated cost for a blueprint.
 type CostEstimate struct {
-	EstimatedRate float64             `json:"estimated_rate"`
-	Unit          string              `json:"unit"`
-	Currency      string              `json:"currency"`
-	Breakdown     []CostBreakdownItem `json:"breakdown"`
+	EstimatedRate float64                `json:"estimated_rate"`
+	Unit          string                 `json:"unit"`
+	Currency      string                 `json:"currency"`
+	Breakdown     []CostBreakdownItem    `json:"breakdown"`
+	Parameters    map[string]interface{} `json:"parameters,omitempty"`
 }
 
 // CostBreakdownItem shows the cost contribution of a sub-blueprint.
 type CostBreakdownItem struct {
-	Blueprint string  `json:"blueprint"`
-	Rate      float64 `json:"rate"`
+	Blueprint  string  `json:"blueprint"`
+	Rate       float64 `json:"rate"`
+	Multiplier int     `json:"multiplier,omitempty"`
 }
 
 // extractBlueprintRef returns the raw reference from a "blueprint/..." resource type.

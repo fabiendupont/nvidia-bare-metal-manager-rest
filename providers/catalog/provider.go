@@ -28,6 +28,8 @@ import (
 type CatalogProvider struct {
 	blueprintStore   BlueprintStoreInterface
 	blueprintHandler *BlueprintHandler
+	orderProxy       *OrderProxy
+	registry         *provider.Registry
 	dbSession        *cdb.Session
 	apiPathPrefix    string
 }
@@ -54,6 +56,12 @@ func (p *CatalogProvider) Init(ctx provider.ProviderContext) error {
 	}
 
 	p.blueprintHandler = NewBlueprintHandler(p.blueprintStore)
+
+	if ctx.Registry != nil {
+		p.registry = ctx.Registry
+		p.orderProxy = NewOrderProxy(ctx.Registry)
+	}
+
 	p.LoadSeedData()
 	return nil
 }
