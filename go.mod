@@ -23,7 +23,7 @@ require (
 	connectrpc.com/grpcreflect v1.3.0
 	connectrpc.com/otelconnect v0.9.0
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/NVIDIA/ncx-infra-controller-rest/sdk/standard v0.0.0-00010101000000-000000000000
+	github.com/NVIDIA/ncx-infra-controller-rest/provider/proto v0.0.0
 	github.com/Nerzal/gocloak/v13 v13.9.0
 	github.com/PagerDuty/go-pagerduty v1.8.0
 	github.com/avast/retry-go/v4 v4.7.0
@@ -98,7 +98,6 @@ require (
 	golang.org/x/sync v0.19.0
 	golang.org/x/term v0.39.0
 	golang.org/x/time v0.14.0
-	github.com/NVIDIA/ncx-infra-controller-rest/provider/proto v0.0.0
 	google.golang.org/grpc v1.77.0-dev
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/fsnotify.v1 v1.4.7

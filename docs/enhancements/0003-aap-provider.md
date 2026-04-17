@@ -7,8 +7,8 @@
 | **Authors** | Fabien Dupont |
 | **Created** | 2026-03-30 |
 | **Target Release** | TBD |
-| **Branch** | `extensible-architecture` (proof of concept) |
-| **Depends on** | NEP-0001 (Extensible Architecture) |
+| **Repository** | [github.com/NVIDIA/nico-provider-aap](https://github.com/NVIDIA/nico-provider-aap) |
+| **Depends on** | NEP-0001 (Extensible Architecture), NEP-0008 (External Provider Protocol) |
 
 ## Summary
 
